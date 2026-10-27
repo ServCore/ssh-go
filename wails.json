@@ -1,0 +1,20 @@
+{
+  "$schema": "https://wails.io/schemas/config.v2.json",
+  "name": "ssh-go",
+  "outputfilename": "ssh-go",
+  "frontend:dir": "frontend",
+  "frontend:install": "npm ci",
+  "frontend:build": "npm run build",
+  "frontend:dev:watcher": "npm run dev",
+  "frontend:dev:serverUrl": "http://127.0.0.1:1421",
+  "wailsjsdir": "./frontend/src",
+  "author": {
+    "name": "ssh-go"
+  },
+  "info": {
+    "companyName": "ssh-go",
+    "productName": "ssh-go",
+    "productVersion": "0.1.0",
+    "comments": "SSH terminal and SFTP client"
+  }
+}

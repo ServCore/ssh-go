@@ -1,0 +1,155 @@
+/* Semantic surfaces are shared by the shell, teleported dialogs and xterm. */
+:root {
+  --accent-primary-1: 240, 244, 255;
+  --accent-primary-2: 225, 234, 255;
+  --accent-primary-3: 186, 206, 253;
+  --accent-primary-4: 130, 167, 252;
+  --accent-primary-5: 78, 131, 253;
+  --accent-primary-6: 51, 112, 255;
+  --accent-primary-7: 36, 91, 219;
+  --accent-primary-8: 28, 70, 170;
+  --accent-primary-9: 22, 53, 128;
+  --accent-primary-10: 16, 38, 87;
+
+  --accent: #3370ff;
+  --accent-solid: #3370ff;
+  --accent-soft: #eaf0ff;
+  --action-fill: #3268df;
+  --action-hover: #2b5dc9;
+  --action-pressed: #244faa;
+  --on-accent: #fff;
+  --control-radius: 6px;
+  --control-compact: 28px;
+  --control-height: 32px;
+  --control-form: 36px;
+  --ink: #1f2329;
+  --text: #1f2329;
+  --muted: #8f959e;
+  --subtle: #646a73;
+  --line: #e8eaf0;
+  --surface: #fff;
+  --chrome: var(--surface);
+  --hover: #eff0f1;
+  --green: #34a853;
+  --danger: #f54a45;
+  --terminal-bg: #fff;
+  --terminal-text: #1f2937;
+  --terminal-cursor: #3370ff;
+  --terminal-selection: rgba(51, 112, 255, 0.2);
+  --terminal-selection-inactive: rgba(51, 112, 255, 0.12);
+  --workspace: #f5f6f7;
+  --raised: #f7f8fa;
+  --accent-line: #bacefd;
+  --focus-ring: rgba(51, 112, 255, .16);
+  --overlay: rgba(31, 35, 41, .34);
+  --popup-shadow: 0 8px 28px rgba(31, 35, 41, .12), 0 2px 6px rgba(31, 35, 41, .04);
+  --panel-shadow: -10px 0 32px rgba(31, 35, 41, .06);
+  --danger-soft: #fff1f0;
+  --danger-line: #f2cfcc;
+  --warning: #ad6700;
+  --warning-soft: #fff7e5;
+  --warning-line: #f8dfb0;
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --accent: #8bb5ff;
+  --accent-soft: #343a53;
+  --ink: #efedf5;
+  --text: #efedf5;
+  --subtle: #b9b6c7;
+  --muted: #918d9f;
+  --line: #3a3846;
+  --surface: #292831;
+  --chrome: #1b1a22;
+  --workspace: #222129;
+  --raised: #32303c;
+  --hover: #3b3847;
+  --green: #74cc9c;
+  --danger: #f19494;
+  --danger-soft: #392b3b;
+  --danger-line: #694353;
+  --warning: #e0be7d;
+  --warning-soft: #353040;
+  --warning-line: #625444;
+  --accent-line: #4b5f8d;
+  --focus-ring: rgba(139, 181, 255, .24);
+  --overlay: rgba(10, 10, 18, .68);
+  --popup-shadow: 0 12px 32px rgba(10, 10, 18, .44), 0 2px 8px rgba(10, 10, 18, .28);
+  --panel-shadow: -10px 0 32px rgba(10, 10, 18, .32);
+  --terminal-bg: #222129;
+  --terminal-text: #e8e5f0;
+  --terminal-cursor: var(--accent);
+  --terminal-selection: rgba(139, 181, 255, .28);
+  --terminal-selection-inactive: rgba(139, 181, 255, .12);
+}
+
+/* Arco's body-level tokens also reach modals and drawers mounted in <body>. */
+body {
+  color: var(--ink);
+  background: var(--workspace);
+  --color-text-1: var(--ink);
+  --color-text-2: var(--subtle);
+  --color-text-3: var(--muted);
+  --color-bg-1: var(--surface);
+  --color-bg-2: var(--surface);
+  --color-bg-3: var(--raised);
+  --color-bg-4: var(--raised);
+  --color-bg-5: var(--raised);
+  --color-bg-popup: var(--surface);
+  --color-border: var(--line);
+  --color-border-1: var(--line);
+  --color-border-2: var(--line);
+  --color-fill-1: var(--raised);
+  --color-fill-2: var(--raised);
+  --color-fill-3: var(--hover);
+  --color-fill-4: var(--line);
+}
+html[data-theme="dark"] body {
+  --color-text-1: var(--ink);
+  --color-text-2: var(--subtle);
+  --color-text-3: var(--muted);
+  --color-bg-1: var(--surface);
+  --color-bg-2: var(--surface);
+  --color-bg-3: var(--raised);
+  --color-bg-4: var(--raised);
+  --color-bg-5: var(--raised);
+  --color-bg-popup: var(--surface);
+  --color-border: var(--line);
+  --color-border-1: var(--line);
+  --color-border-2: var(--line);
+  --color-fill-1: var(--raised);
+  --color-fill-2: var(--raised);
+  --color-fill-3: var(--hover);
+  --color-fill-4: var(--line);
+}
+.arco-modal, .arco-drawer {
+  color: var(--ink);
+  background: var(--surface);
+}
+.arco-drawer-mask, .arco-modal-mask { background: var(--overlay); }
+.arco-btn-primary:not(.arco-btn-disabled) { color: var(--on-accent, #fff); }
+html[data-theme="dark"] .arco-btn-primary:not(.arco-btn-disabled) { color: var(--on-accent, #fff); }
+html[data-theme="dark"] .arco-btn-primary.arco-btn-status-danger:not(.arco-btn-disabled) { color: #fff; }
+* { scrollbar-color: var(--line) transparent; }
+
+/* Action icons follow the accent; semantic, brand and disabled contexts inherit. */
+.server-avatar, .settings-section-icon, .palette-icon,
+.global-error, .inline-error, .file-error, .monitor-error, .danger,
+.success-notice, .monitor-warning, .disk-warning, .import-warnings,
+.arco-btn-primary, .arco-btn-status-danger { --icon-color: currentColor; }
+button:disabled, .arco-btn-disabled, [aria-disabled="true"] { --icon-color: currentColor; }
+
+/* Adapt the shared palette to Arco, including its dark body-level defaults. */
+html[data-theme] body {
+  --primary-1: var(--accent-primary-1);
+  --primary-2: var(--accent-primary-2);
+  --primary-3: var(--accent-primary-3);
+  --primary-4: var(--accent-primary-4);
+  --primary-5: var(--accent-primary-5);
+  --primary-6: var(--accent-primary-6);
+  --primary-7: var(--accent-primary-7);
+  --primary-8: var(--accent-primary-8);
+  --primary-9: var(--accent-primary-9);
+  --primary-10: var(--accent-primary-10);
+}

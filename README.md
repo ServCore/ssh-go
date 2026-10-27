@@ -1,0 +1,126 @@
+# ssh-go
+
+基于 **Go + Wails 2 + Vue 3** 的桌面 SSH / SFTP 客户端。集中管理服务器连接，在同一工作区使用多会话终端、双栏文件管理和本地端口转发。
+
+当前版本 **0.1.0**，亮色采用飞书风格的蓝白配色与浅灰工作区：顶部应用菜单、全宽服务器卡片、分组筛选和右侧连接详情。macOS 使用系统原生菜单，Windows / Linux 和网页预览提供窗口内菜单。已在 macOS Apple Silicon 完成构建，Windows / Linux 桌面尚未验收。
+
+![服务器卡片工作区](docs/images/servers.png)
+
+## 功能
+
+| 模块 | 已实现 |
+| --- | --- |
+| 连接管理 | 卡片网格、系统识别图标、分组与搜索、右侧详情抽屉、复制、JSON / OpenSSH 配置导入导出 |
+| SSH 认证 | 密码、私钥与加密私钥、SSH Agent、最多 8 层跳板机链 |
+| 服务器身份 | 首次连接逐跳确认指纹；指纹变化时阻止连接 |
+| 终端 | 多会话、PTY 尺寸同步、3000 行回滚、输出流控、ANSI 颜色与显示高亮 |
+| 服务器监控 | Linux CPU / 内存趋势、网络收发速率、磁盘分区、Swap、系统负载与运行时长 |
+| 文件管理 | 本地 / 远程双栏、虚拟滚动、搜索排序、多选、新建目录、重命名与删除；上传入口位于远程文件标题行 |
+| 文件传输 | 文件 / 目录上传下载、4 项并发、进度、取消与重试、覆盖冲突检查、中断恢复 |
+| 端口转发 | 通过搜索与操作调用，绑定本地回环地址，支持自动分配端口和显式停止 |
+| 本地存储 | 配置原子写入、AES-256-GCM 加密凭据、连接身份变化时清理旧凭据 |
+
+连接成功后自动读取并缓存操作系统，服务器卡片和详情使用对应系统标识；尚未识别时显示通用服务器图标。点击卡片的「查看详情」打开右侧详情抽屉；单击卡片其他区域不打开详情，双击卡片或聚焦卡片后按 Enter 连接并打开终端，已连接时直接返回该终端。顶部“查看”菜单可回到服务器、搜索操作、打开传输队列或设置；⌘ / Ctrl + N 添加服务器，⌘ / Ctrl + K 搜索，⌘ / Ctrl + , 打开设置。右上角「服务器」返回全局列表，旁边的搜索图标保留 ⌘ / Ctrl + K 快捷键。已打开的连接显示在顶部标签栏，点击切换，标签右侧可关闭或移除会话；标签聚焦时，左右方向键、Home / End 可切换，Delete 关闭该标签。连接较多时横向滚动，长名称省略并在悬停时显示完整名称与地址。下方工具栏显示当前连接的终端、SFTP 与监控，切换时保留各自状态；账号与地址紧随监控，采集控制位于右侧。设置可从顶部菜单或工作区设置入口打开。在“设置 → 外观模式”中选择亮色、深色或跟随系统，偏好自动保存在本机；终端同步切换配色，保留当前连接与输出。外观设置还可选择蓝、绿、红、橙、紫主题色，操作图标、按钮、选中态与焦点统一换色，状态提示和终端 ANSI 输出保留原有颜色。
+
+连接服务器后，在「终端 / SFTP / 监控」中选择「监控」，查看宝塔风格的服务器概览：顶部左侧突出系统负载，右侧合并展示 CPU、内存与根分区的大号环形仪表；下方以宽幅流量图搭配资源趋势，系统信息收成紧凑信息带，采集控制位于会话导航最右侧，账号与主机地址紧随「监控」并用竖线分隔。圆环随采样平滑更新，减少动态效果的系统偏好下关闭过渡。趋势图支持悬停查看同一时刻的读数，也可聚焦图表后使用方向键、Home / End 浏览采样点，Esc 收起读数。Linux 指标通过现有 SSH 连接只读采集，无需安装服务；一次采样结束后间隔 3 秒刷新，保留当前连接最近 5 分钟的趋势。首次采样建立基线，CPU 与网络速率从第二次采样开始显示。切换页面、隐藏窗口或手动暂停时停止发起采样，断开后保留最后数据并注明状态；重新连接开始新记录。网络为非回环网卡合计，虚拟网卡可能重复计入流量。macOS / Windows 远端暂不支持监控。
+
+<details>
+<summary>连接详情、终端与 SFTP 预览</summary>
+
+截图使用隔离测试数据，不包含真实服务器配置。
+
+![深色服务器工作区](docs/images/servers-dark.png)
+![深色终端](docs/images/terminal-dark.png)
+![顶部应用菜单](docs/images/application-menu.png)
+![连接详情抽屉](docs/images/connection-details.png)
+![终端输出高亮](docs/images/terminal.png)
+![单行导航与服务器监控](docs/images/monitor.png)
+![顶部连接标签](docs/images/connection-tabs.png)
+![监控趋势与读数](docs/images/monitor-detail.png)
+![双栏文件管理](docs/images/sftp.png)
+
+</details>
+
+## 快速开始
+
+需要 Node.js 22.12+、Go 1.26.1、Wails CLI 2.12.0；macOS 需要 Xcode 命令行工具。在项目根目录执行：
+
+```sh
+GOTOOLCHAIN=go1.26.1 go install github.com/wailsapp/wails/v2/cmd/wails@v2.12.0
+export PATH="$(go env GOPATH)/bin:$PATH"
+npm --prefix frontend ci
+make run
+```
+
+桌面脚本固定使用兼容 Wails 绑定分析器的 Go 1.26.1，支持系统安装更新版本的 Go。首次运行缺少生产资源时会先构建前端；显式设置的 `GOTOOLCHAIN` 会保留。
+
+```sh
+make build                       # 构建桌面包
+npm --prefix frontend run dev     # 仅预览网页，端口 1421
+make help                        # 查看全部入口
+```
+
+macOS 构建产物为 `build/bin/ssh-go.app`，当前为本机自签名开发包，尚未接入签名公证和正式安装包分发。网页预览可查看界面，实际 SSH、文件操作和原生对话框需要桌面环境。
+
+## 验证
+
+首次运行界面测试需要安装 Playwright Chromium：
+
+```sh
+cd frontend
+npx playwright install chromium
+cd ..
+make check
+```
+
+也可以使用已安装的 Chrome：
+
+```sh
+SSH_TOOLS_CHROMIUM='/Applications/Google Chrome.app/Contents/MacOS/Google Chrome' make check
+```
+
+`make check` 依次执行前端类型检查与构建、`go vet ./...`、Go 竞态检查和 64 项界面回归。Go 测试使用本地隔离的 SSH / SFTP 服务；界面测试使用模拟的 Wails 桥接。测试覆盖连接取消与迟到回包、认证和指纹、端口转发、终端流控、文件传输、覆盖冲突、中断恢复、卡片抽屉、监控采样与暂停、主题色和键盘焦点。
+
+GitHub Actions 工作流已在本地准备，用于 macOS 构建、测试与本机签名校验；当前尚未上传并启用，请先使用上述本地命令验证。
+
+## 工程结构
+
+```text
+ssh-go/
+├── main.go / app.go       # 桌面入口、生命周期与原生 RPC
+├── menu.go                # macOS 系统菜单与前端命令事件
+├── internal/core/        # SSH、SFTP、存储、转发和传输恢复
+├── frontend/             # Vue 源码、前端配置、依赖和界面测试
+├── build/                # 图标与平台配置；bin/ 为构建产物
+├── scripts/              # Wails 构建包装脚本
+├── docs/                 # 使用说明、架构、性能记录与项目素材
+├── .github/workflows/    # 持续集成配置，本地保留，待上传
+├── go.mod / go.sum       # Go 依赖
+├── wails.json            # 桌面项目配置
+└── Makefile              # 统一开发、构建和检查入口
+```
+
+前端与后端保持独立目录，生成的依赖、构建产物、Wails 桥接和测试报告均被忽略。详细文件职责见 [目录说明](docs/STRUCTURE.md)。
+
+## 性能与边界
+
+文件列表使用虚拟滚动和浅层响应式快照。刷新时用路径集合单次遍历保留选中项；传输完成只通知目标端点与目录，连续完成会合并刷新，隐藏面板和窗口延迟到再次显示时读取。在双栏各 10 万个文件的受控生产资源测试中，前端 JS 堆中位数从 **142.28 MiB 降至 34.07 MiB，减少约 76%**。这是 Chromium 前端 JS 堆的对比，不代表整个桌面应用的总内存降幅；本轮未测得显著的空闲总占用降低。测试方法和复现命令见 [内存记录](docs/MEMORY.md)。
+
+传输恢复支持恢复原文件或清理临时文件，**不提供断点续传**。不合并或覆盖已有目录，不传输符号链接或特殊文件；远端目录提交依赖服务器的 SFTP rename 语义。服务器特有的认证与 SFTP 行为仍需在实际环境验证。
+
+状态栏只统计主进程（含原生窗口），不包含 WebView；macOS 显示当前物理占用，Linux 显示当前 RSS，回退时明确注明口径。
+
+## 文档
+
+- [配置、凭据和传输恢复](docs/DATA.md)
+- [架构与技术取舍](docs/ARCHITECTURE.md)
+- [目录与构建入口](docs/STRUCTURE.md)
+- [开发与贡献](docs/CONTRIBUTING.md)
+- [主题与图标用色](docs/THEMING.md)
+- [内存对比与复现](docs/MEMORY.md)
+- [迁移与验收记录](docs/MIGRATION.md)
+- [项目介绍与简历素材](docs/PORTFOLIO.md)
+
+## 许可证
+
+项目许可证尚未选定。第三方依赖保留各自授权，主要依赖见 [依赖说明](docs/DEPENDENCIES.md)。

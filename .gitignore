@@ -1,0 +1,32 @@
+# Dependencies and generated frontend assets
+node_modules/
+dist/
+wailsjs/
+package.json.md5
+*.tsbuildinfo
+
+# Local builds, backups and test reports
+/releases/
+/backups/
+/output/
+/build/bin/
+.DS_Store
+.test-artifacts/
+playwright-report/
+test-results/
+*.log
+
+# Local runtime data and credentials
+.env
+.env.*
+!.env.example
+/data/
+/frontend/data/
+state.json
+recoveries.json
+*.pem
+*.key
+id_rsa*
+id_ed25519*
+*.part
+*.bak

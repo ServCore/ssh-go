@@ -1,0 +1,44 @@
+import type { ServerMetrics } from "../../lib/types";
+
+export type ResourceTone = "normal" | "elevated" | "high" | "unavailable";
+export type ResourceKind = "load" | "cpu" | "memory" | "disk";
+
+// These are UI attention thresholds, not a diagnosis of service availability.
+const thresholds: Record<ResourceKind, [number, number]> = {
+  load: [75, 100], cpu: [75, 90], memory: [80, 90], disk: [80, 90],
+};
+export function resourceTone(value: number | null | undefined, kind: ResourceKind = "cpu"): ResourceTone {
+  if (value == null || !Number.isFinite(value) || value < 0) return "unavailable";
+  const [warning, critical] = thresholds[kind];
+  return value >= critical ? "high" : value >= warning ? "elevated" : "normal";
+}
+export function usagePercent(used: number, total: number): number | null {
+  return Number.isFinite(total) && total > 0 && Number.isFinite(used) && used >= 0 ? used / total * 100 : null;
+}
+export function loadPercentOf(sample: ServerMetrics): number | null {
+  const load = sample.load[0];
+  return load != null && sample.cpuCores > 0 ? load / sample.cpuCores * 100 : null;
+}
+export function resourceHealth(sample: ServerMetrics) {
+  const metrics = [
+    { name: "系统负载", value: loadPercentOf(sample), kind: "load" as const },
+    { name: "CPU", value: sample.cpuPercent, kind: "cpu" as const },
+    { name: "内存", value: usagePercent(sample.memoryUsed, sample.memoryTotal), kind: "memory" as const },
+    ...sample.disks.map(disk => ({ name: `${disk.mount} 磁盘`, value: disk.total > 0 ? disk.usedPercent : null, kind: "disk" as const })),
+  ];
+  const assessed = metrics.map(metric => ({ ...metric, tone: resourceTone(metric.value, metric.kind) }));
+  // A known pressure condition remains useful even when another metric is missing.
+  for (const tone of ["high", "elevated"] as const) {
+    const issue = assessed.find(metric => metric.tone === tone);
+    if (issue) return {
+      tone, label: tone === "high" ? "资源紧张" : "需要关注",
+      reason: `${issue.name} · ${issue.kind === "disk" ? "已用" : issue.kind === "load" ? "每核负载" : "使用率"} ${issue.value!.toFixed(1)}%`,
+    };
+  }
+  const missing = assessed.find(metric => metric.tone === "unavailable");
+  if (missing || !sample.disks.some(disk => disk.mount === "/")) return {
+    tone: "unavailable" as const, label: "正在采样", reason: missing ? `等待${missing.name}采样` : "未读取到根分区数据",
+  };
+  if (sample.warnings.length) return { tone: "elevated" as const, label: "需要关注", reason: sample.warnings[0]! };
+  return { tone: "normal" as const, label: "运行流畅", reason: "资源余量充足 · 采样正常" };
+}

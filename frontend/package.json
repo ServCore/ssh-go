@@ -1,0 +1,29 @@
+{
+  "name": "ssh-go",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1",
+    "build": "vue-tsc --noEmit && vite build",
+    "preview": "vite preview --host 127.0.0.1",
+    "test": "playwright test --config tests/playwright.config.ts",
+    "profile:memory": "npm run build && playwright test --config tests/playwright.memory.config.ts --repeat-each 3",
+    "desktop": "node ../scripts/wails.mjs dev",
+    "package": "node ../scripts/wails.mjs build -clean"
+  },
+  "dependencies": {
+    "@arco-design/web-vue": "^2.58.0",
+    "@tanstack/vue-virtual": "^3.13.45",
+    "@xterm/addon-fit": "^0.11.0",
+    "@xterm/xterm": "^6.0.0",
+    "vue": "^3.5.44"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.64.0",
+    "@vitejs/plugin-vue": "^6.0.10",
+    "typescript": "^5.9.3",
+    "vite": "^7.1.12",
+    "vue-tsc": "^3.3.13"
+  }
+}

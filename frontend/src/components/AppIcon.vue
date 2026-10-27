@@ -1,0 +1,86 @@
+<script setup lang="ts">
+import {
+  IconDesktop,
+  IconStorage,
+  IconFolder,
+  IconSettings,
+  IconSearch,
+  IconPlus,
+  IconMore,
+  IconClose,
+  IconCode,
+  IconFile,
+  IconUpload,
+  IconDownload,
+  IconArrowUp,
+  IconDown,
+  IconRefresh,
+  IconRight,
+  IconLeft,
+  IconCopy,
+  IconEdit,
+  IconDelete,
+  IconCheckCircle,
+  IconInfoCircle,
+  IconLock,
+  IconSafe,
+  IconLink,
+  IconApps,
+  IconEye,
+  IconEyeInvisible,
+  IconExpand,
+  IconShrink,
+  IconMenuFold,
+  IconMenuUnfold,
+  IconSwap,
+  IconDashboard,
+} from "@arco-design/web-vue/es/icon";
+const icons = {
+  server: IconStorage,
+  desktop: IconDesktop,
+  folder: IconFolder,
+  settings: IconSettings,
+  search: IconSearch,
+  plus: IconPlus,
+  more: IconMore,
+  close: IconClose,
+  terminal: IconCode,
+  file: IconFile,
+  upload: IconUpload,
+  download: IconDownload,
+  up: IconArrowUp,
+  down: IconDown,
+  refresh: IconRefresh,
+  right: IconRight,
+  left: IconLeft,
+  copy: IconCopy,
+  edit: IconEdit,
+  delete: IconDelete,
+  check: IconCheckCircle,
+  info: IconInfoCircle,
+  lock: IconLock,
+  safe: IconSafe,
+  link: IconLink,
+  apps: IconApps,
+  eye: IconEye,
+  hidden: IconEyeInvisible,
+  expand: IconExpand,
+  shrink: IconShrink,
+  fold: IconMenuFold,
+  unfold: IconMenuUnfold,
+  swap: IconSwap,
+  monitor: IconDashboard,
+};
+withDefaults(defineProps<{ name: keyof typeof icons; size?: number; tone?: "accent" | "inherit" }>(), {
+  size: 18,
+  tone: "accent",
+});
+</script>
+<template>
+  <component :is="icons[name]" :size="size" class="app-icon" :class="{ 'icon-inherit': tone === 'inherit' || name === 'close' || name === 'more' }" aria-hidden="true" />
+</template>
+
+<style scoped>
+.app-icon { color: var(--icon-color, var(--accent)); }
+.app-icon.icon-inherit { color: inherit; }
+</style>
