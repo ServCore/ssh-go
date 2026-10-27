@@ -11,4 +11,4 @@ ssh-go 使用扁平圆角方块和白色终端提示符，去除原应用图标�
 
 随后运行 `npm --prefix frontend run build` 检查前端，并通过 `node scripts/wails.mjs build` 打包桌面应用。已运行的旧进程可能继续显示之前加载的 Dock 图标；新应用在下次启动时读取新图标。
 
-macOS 打包完成后，构建脚本同时刷新 `.app` 目录的修改时间，以便 Finder/Dock 重新读取图标，避免仅替换包内资源后继续沿用旧缓存。
+macOS 开发版和正式版统一使用 `dev.worklane.ssh.go` 作为应用标识，并明确引用 `Contents/Resources/iconfile.icns`。构建脚本在打包完成后刷新 `.app` 目录时间，并向 Launch Services 更新当前应用包的注册记录，供 Finder、Dock 和台前调度读取图标；启动开发模式前也会刷新已有应用包的注册。脚本使用实际目录路径，避免项目改名后继续注册旧路径别名。无需清理全局图标缓存或重启 Dock。
