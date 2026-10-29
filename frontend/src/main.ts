@@ -4,6 +4,7 @@ import "@arco-design/web-vue/es/button/style/css.js";
 import App from "./App.vue";
 import "./styles.css";
 import "./themes.css";
+import "./motion.css";
 import { initializeAppearance } from "./composables/appearance";
 
 const stopAppearance = initializeAppearance();

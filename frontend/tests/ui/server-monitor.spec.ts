@@ -60,13 +60,13 @@ test("disconnect stops sampling, preserves last data, and reconnect starts a fre
   await expect(monitor(page)).toContainText("37.5%");
   await page.evaluate(() => (window as any).__qa.emit("session-closed", { sessionId: "qa-session-1", reason: "连接中断" }));
   await expect(monitor(page)).toContainText("SSH 连接已断开");
-  await expect(monitor(page).getByRole("article", { name: "运行状态", exact: true })).toContainText("状态待确认");
+  await expect(monitor(page).getByRole("article", { name: "系统负载", exact: true })).toContainText("状态待确认");
   await expect(monitor(page).getByRole("img", { name: "内存使用率 37.5%", exact: true })).toHaveClass(/unavailable/);
   await expect(page.getByRole("button", { name: "刷新监控" })).toBeDisabled();
   const count = await calls(page); await page.clock.fastForward(10000); expect(await calls(page)).toBe(count);
   await page.getByRole("button", { name: "重新连接", exact: true }).click();
-  await expect(page.locator(".xterm")).toBeVisible();
-  await page.getByRole("button", { name: "监控", exact: true }).click();
+  await expect(page.getByRole("button", { name: "监控", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await expect(monitor(page)).toBeVisible();
   await expect(monitor(page)).toContainText("等待下一次采样");
   expect(await page.evaluate(() => (window as any).__qa.calls.filter((c: any) => c.command === "get_server_metrics").at(-1).args.sessionId)).toBe("qa-session-2");
 });
@@ -90,7 +90,7 @@ test("failed refresh marks old data and recovers without hiding the terminal", a
   await page.clock.fastForward(3100);
   await expect(monitor(page).getByRole("alert")).toContainText("上次成功采样");
   await expect(monitor(page)).toContainText("37.5%");
-  await expect(monitor(page).getByRole("article", { name: "运行状态", exact: true })).toHaveClass(/unavailable/);
+  await expect(monitor(page).getByRole("article", { name: "系统负载", exact: true })).toHaveClass(/unavailable/);
   await page.evaluate(() => (window as any).__qa.monitorError = null);
   await page.getByRole("button", { name: "刷新监控" }).click();
   await expect(monitor(page).getByRole("alert")).toHaveCount(0);
@@ -189,19 +189,19 @@ async function healthFixture(page: Page) {
 
 test("resource mood follows actual pressure, includes non-root disks, and keeps paused readings neutral", async ({ page }, info) => {
   await healthFixture(page);
-  const panel = monitor(page), summary = panel.getByRole("article", { name: "运行状态", exact: true });
-  await expect(summary).toContainText("运行流畅");
-  await expect(summary).toContainText("资源余量充足");
+  const panel = monitor(page), summary = panel.getByRole("article", { name: "系统负载", exact: true });
+  await expect(summary).toContainText("负载正常");
+  await expect(summary).toContainText("当前未发现资源压力");
   await page.keyboard.press("Meta+,");
   await page.getByLabel("外观模式", { exact: true }).selectOption("dark");
   await selectSession(page, "测试服务器");
-  await expect(summary).toContainText("运行流畅");
+  await expect(summary).toContainText("负载正常");
   await expect(panel.getByRole("img", { name: "内存使用率 37.5%", exact: true })).toHaveCSS("color", "rgb(76, 231, 172)");
   await page.screenshot({ path: info.outputPath("mood-healthy-dark.png"), animations: "disabled" });
 
   await page.evaluate(() => { (window as any).__qa.healthSample.memoryUsed = 8 * 1024 ** 3 * .84; });
   await page.clock.fastForward(3100);
-  await expect(summary).toContainText("需要关注");
+  await expect(summary).toContainText("内存使用率偏高");
   await expect(summary).toContainText("内存 · 使用率 84.0%");
   await expect(panel.getByRole("img", { name: "内存使用率 84.0%", exact: true })).toHaveClass(/elevated/);
   await expect(panel.getByRole("article", { name: "内存使用量", exact: true })).toContainText("使用率偏高");
@@ -209,7 +209,7 @@ test("resource mood follows actual pressure, includes non-root disks, and keeps 
 
   await page.evaluate(() => { (window as any).__qa.healthSample = { cpuPercent: 93.2 }; });
   await page.clock.fastForward(3100);
-  await expect(summary).toContainText("资源紧张");
+  await expect(summary).toContainText("CPU使用率很高");
   await expect(summary).toContainText("CPU · 使用率 93.2%");
   await expect(panel.getByRole("img", { name: "CPU 使用率 93.2%", exact: true })).toHaveClass(/high/);
   await expect(panel.getByRole("img", { name: "内存使用率 37.5%", exact: true })).toHaveClass(/normal/);
@@ -222,7 +222,10 @@ test("resource mood follows actual pressure, includes non-root disks, and keeps 
     ] };
   });
   await page.clock.fastForward(3100);
-  await expect(summary).toContainText("/data 磁盘 · 已用 94.2%");
+  await expect(summary).toContainText("/data 分区 · 已用 94.2%");
+  await expect(summary).toHaveClass(/normal/);
+  await expect(summary.locator(".load-status")).toHaveText("负载正常");
+  await expect(summary.getByRole("status", { name: "资源提示", exact: true })).toHaveClass(/high/);
   await expect(panel.getByRole("img", { name: "CPU 使用率 12.0%", exact: true })).toHaveClass(/normal/);
   await page.getByRole("button", { name: "暂停采集", exact: true }).click();
   await expect(summary).toContainText("状态待确认");
@@ -230,13 +233,18 @@ test("resource mood follows actual pressure, includes non-root disks, and keeps 
   await expect(panel.getByRole("img", { name: "CPU 使用率 12.0%", exact: true })).toHaveClass(/unavailable/);
   await page.screenshot({ path: info.outputPath("mood-paused-dark.png"), animations: "disabled" });
   await page.getByRole("button", { name: "继续采集", exact: true }).click();
-  await expect(summary).toContainText("资源紧张");
+  await expect(summary).toContainText("分区空间紧张");
+  await page.evaluate(() => { (window as any).__qa.healthSample = { cpuPercent: 18.4, load: [4.8, 4.2, 3.7] }; });
+  await page.clock.fastForward(3100);
+  await expect(summary).toHaveClass(/high/);
+  await expect(summary.locator(".load-status")).toHaveText("负载较高");
+  await expect(summary.locator(".load-copy > strong")).toContainText("4.80");
 });
 
 test("a stalled sample expires without losing history and missing metrics never imply healthy resources", async ({ page }) => {
   await healthFixture(page);
-  const panel = monitor(page), summary = panel.getByRole("article", { name: "运行状态", exact: true });
-  await expect(summary).toContainText("运行流畅");
+  const panel = monitor(page), summary = panel.getByRole("article", { name: "系统负载", exact: true });
+  await expect(summary).toContainText("负载正常");
   await page.evaluate(() => { (window as any).__qa.pauseMonitor = true; });
   await page.clock.fastForward(16000);
   await expect(summary).toContainText("状态待确认");
@@ -252,7 +260,44 @@ test("a stalled sample expires without losing history and missing metrics never 
   await expect(panel.getByRole("img", { name: "内存使用率 等待采样", exact: true })).toHaveClass(/unavailable/);
   await page.evaluate(() => { (window as any).__qa.healthSample = { cpuPercent: 18.4 }; });
   await page.clock.fastForward(3100);
-  await expect(summary).toContainText("运行流畅");
+  await expect(summary).toContainText("负载正常");
   await page.emulateMedia({ reducedMotion: "reduce" });
   expect(await summary.locator(".load-dot").evaluate(el => getComputedStyle(el, "::after").animationName)).toBe("none");
+});
+
+
+test("a partition space reminder leaves healthy system load calm and identifies the exact affected partition", async ({ page }, info) => {
+  await healthFixture(page);
+  await page.evaluate(() => {
+    const gb = 1024 ** 3;
+    (window as any).__qa.healthSample = {
+      cpuPercent: 3.8, cpuCores: 8, load: [0.48, 0.42, 0.39],
+      memoryTotal: 32 * gb, memoryUsed: 7.8 * gb,
+      disks: [
+        { filesystem: "/dev/sda1", mount: "/", total: 40 * gb, used: 18.96 * gb, available: 21.04 * gb, usedPercent: 47.4 },
+        { filesystem: "/dev/sdb1", mount: "/data", total: 100 * gb, used: 82.6 * gb, available: 17.4 * gb, usedPercent: 82.6 },
+      ],
+    };
+  });
+  await page.clock.fastForward(3100);
+  const summary = monitor(page).getByRole("article", { name: "系统负载", exact: true });
+  await expect(summary).toHaveClass(/normal/);
+  await expect(summary.locator(".load-status")).toHaveText("负载正常");
+  await expect(summary.locator(".load-copy > strong")).toContainText("0.48");
+  await expect(summary.getByRole("img", { name: "负载占核心数比例 6.0%", exact: true })).toHaveClass(/normal/);
+  const reminder = summary.getByRole("status", { name: "资源提示", exact: true });
+  await expect(reminder).toHaveClass(/elevated/);
+  await expect(reminder).toContainText("分区空间提醒");
+  await expect(reminder).toContainText("/data 分区 · 已用 82.6% · 可用 17.4 GB");
+  await expect(summary).not.toContainText("需要关注");
+  await expect(monitor(page).getByRole("img", { name: "根分区使用率 47.4%", exact: true })).toHaveClass(/normal/);
+  await page.setViewportSize({ width: 1080, height: 700 });
+  await page.clock.runFor(50);
+  await page.screenshot({ path: info.outputPath("partition-reminder-light.png"), animations: "disabled" });
+  await summary.screenshot({ path: info.outputPath("load-card-partition-reminder.png"), animations: "disabled" });
+  await page.keyboard.press("Meta+,");
+  await page.getByLabel("外观模式", { exact: true }).selectOption("dark");
+  await selectSession(page, "测试服务器");
+  await expect(summary.locator(".load-status")).toHaveText("负载正常");
+  await page.screenshot({ path: info.outputPath("partition-reminder-dark.png"), animations: "disabled" });
 });

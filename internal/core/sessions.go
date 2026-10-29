@@ -226,10 +226,44 @@ func (e *Engine) connectChain(ctx context.Context, a Arguments) (SessionInfo, er
 	}
 	e.sessions[info.ID] = s
 	published = true
-	e.wg.Add(1)
+	e.wg.Add(2)
 	e.mu.Unlock()
 	go func() { defer e.wg.Done(); _ = s.client.Wait(); e.removeSession(s, "SSH 连接已断开") }()
+	go func() { defer e.wg.Done(); e.keepalive(s, 30*time.Second, 10*time.Second) }()
 	return info, nil
+}
+
+// An SSH rejection still proves the peer is reachable. Only transport errors
+// or a missing reply close the connection; user inactivity is not a signal.
+func (e *Engine) keepalive(s *connection, interval, timeout time.Duration) {
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-s.ctx.Done():
+			return
+		case <-ticker.C:
+		}
+		probe, cancel := context.WithTimeout(s.ctx, timeout)
+		closed := make(chan struct{})
+		stop := context.AfterFunc(probe, func() {
+			defer close(closed)
+			reason := "SSH 连接已断开"
+			if errors.Is(probe.Err(), context.DeadlineExceeded) {
+				reason = "SSH 连接无响应，请检查网络后重新连接"
+			}
+			e.removeSession(s, reason)
+		})
+		_, _, err := s.client.SendRequest("keepalive@openssh.com", true, nil)
+		if !stop() {
+			<-closed
+		}
+		cancel()
+		if err != nil {
+			e.removeSession(s, "SSH 连接已断开")
+			return
+		}
+	}
 }
 
 func authMethods(ctx context.Context, h Host, secret string) ([]ssh.AuthMethod, func(), error) {
@@ -292,7 +326,8 @@ func authMethods(ctx context.Context, h Host, secret string) ([]ssh.AuthMethod, 
 }
 
 func (e *Engine) removeSession(s *connection, reason string) {
-	s.close()
+	// Claim removal before closing the transport so the timeout reason is not
+	// replaced by a racing client.Wait notification.
 	e.mu.Lock()
 	if e.sessions[s.info.ID] != s {
 		e.mu.Unlock()
@@ -313,6 +348,7 @@ func (e *Engine) removeSession(s *connection, reason string) {
 		}
 	}
 	e.mu.Unlock()
+	s.close()
 	for _, t := range ts {
 		t.close()
 	}

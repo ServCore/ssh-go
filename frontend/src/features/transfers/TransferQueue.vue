@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from "vue";
+import { onBeforeUnmount, onMounted, ref, watch } from "vue";
 import BaseModal from "../../components/BaseModal.vue";
 import AppIcon from "../../components/AppIcon.vue";
 import RecoveryPanel from "./RecoveryPanel.vue";
@@ -11,6 +11,33 @@ const w = useWorkspace(),
   busy = ref(new Set<string>()),
   error = ref("");
 const emit = defineEmits<{ close: [] }>();
+const justCompleted = ref(new Set<string>());
+const completionTimers = new Map<string, ReturnType<typeof setTimeout>>();
+watch(w.lastCompletedTransfer, (t) => {
+  if (!t || document.hidden) return;
+  justCompleted.value.add(t.id);
+  completionTimers.set(t.id, setTimeout(() => {
+    justCompleted.value.delete(t.id);
+    completionTimers.delete(t.id);
+  }, 240));
+}, { flush: "sync" });
+function clearCompletionFeedback() {
+  for (const timer of completionTimers.values()) clearTimeout(timer);
+  completionTimers.clear();
+  justCompleted.value.clear();
+}
+function motionVisibility() {
+  if (document.hidden) clearCompletionFeedback();
+}
+onMounted(() => document.addEventListener("visibilitychange", motionVisibility));
+onBeforeUnmount(() => {
+  document.removeEventListener("visibilitychange", motionVisibility);
+  clearCompletionFeedback();
+});
+function progress(t: TransferInfo) {
+  if (t.status === "completed") return 1;
+  return t.bytesTotal > 0 ? Math.max(0, Math.min(1, t.bytesDone / t.bytesTotal)) : 0;
+}
 const statuses: Record<TransferInfo["status"], string> = {
   queued: "排队中",
   preparing: "准备中",
@@ -78,9 +105,10 @@ function showFiles(t: TransferInfo) {
         :key="t.id"
         class="transfer-item"
       >
-        <span class="transfer-direction"
+        <span class="transfer-direction" :class="{ 'is-completed': t.status === 'completed' }"
           ><AppIcon
-            :name="t.direction === 'upload' ? 'upload' : 'download'"
+            :name="t.status === 'completed' ? 'check' : t.direction === 'upload' ? 'upload' : 'download'"
+            :class="{ [`activity-${t.direction}`]: t.status === 'running', 'completion-feedback': justCompleted.has(t.id) }"
             :size="19"
         /></span>
         <div class="transfer-item-main">
@@ -90,11 +118,16 @@ function showFiles(t: TransferInfo) {
               statuses[t.status]
             }}</span>
           </div>
-          <progress
-            :value="t.bytesDone"
-            :max="Math.max(1, t.bytesTotal)"
+          <div
+            class="transfer-progress"
+            :class="{ 'is-completed': t.status === 'completed' }"
+            role="progressbar"
+            :aria-valuenow="t.bytesTotal > 0 || t.status === 'completed' ? Math.round(progress(t) * 100) : undefined"
+            :aria-valuemin="0"
+            :aria-valuemax="100"
+            :aria-valuetext="statuses[t.status]"
             :aria-label="`${t.name} 传输进度`"
-          ></progress
+          ><i class="transfer-progress-fill" :style="{ transform: `scaleX(${progress(t)})` }"></i></div
           ><small
             >{{ formatBytes(t.bytesDone) }} / {{ formatBytes(t.bytesTotal)
             }}<span v-if="t.error"> · {{ t.error }}</span></small

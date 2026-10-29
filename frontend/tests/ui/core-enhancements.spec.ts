@@ -63,7 +63,7 @@ test("import previews warnings before explicit confirmation and cancellation nev
   await page.getByRole("button", { name: "导入 JSON 配置", exact: true }).click();
   await page.getByRole("button", { name: "确认导入", exact: true }).click();
   await expect(page.getByRole("status").filter({hasText:"已导入 1 台服务器"})).toBeVisible();
-  await page.getByRole("button", { name: "服务器", exact: true }).click();
+  await page.getByRole("button", { name: "返回服务器", exact: true }).click();
   await expect(page.getByRole("group", { name: "服务器 导入主机", exact: true })).toBeVisible();
 });
 

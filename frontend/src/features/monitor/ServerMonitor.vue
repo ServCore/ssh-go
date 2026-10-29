@@ -43,6 +43,11 @@ const health = computed(() => !readingsCurrent.value || !snapshot.value
 function metricState(value: number | null | undefined, kind: ResourceKind): ResourceTone {
   return readingsCurrent.value ? resourceTone(value, kind) : "unavailable";
 }
+const loadState = computed(() => metricState(loadPercent.value, "load"));
+const loadLabel = computed(() => loadState.value === "normal" ? "负载正常"
+  : loadState.value === "elevated" ? "负载偏高"
+  : loadState.value === "high" ? "负载较高"
+  : readingsCurrent.value ? "等待采样" : "状态待确认");
 const cpuState = computed(() => metricState(snapshot.value?.cpuPercent, "cpu"));
 const memoryState = computed(() => metricState(memoryPercent.value, "memory"));
 const diskState = computed(() => metricState(rootDisk.value && rootDisk.value.total > 0 ? rootDisk.value.usedPercent : null, "disk"));
@@ -129,13 +134,19 @@ onBeforeUnmount(() => {
         <div v-else-if="!snapshot" class="monitor-empty"><AppIcon name="monitor" :size="32" /><h2>{{ unsupported ? '此服务器暂不支持监控' : '暂时无法读取监控数据' }}</h2><p>第一版支持 Linux，使用普通用户可读取的系统指标。</p></div>
         <template v-if="snapshot">
           <section class="resource-overview" :class="{ 'readings-unavailable': !readingsCurrent }" aria-label="实时资源状态">
-            <article class="load-card" :class="health.tone" aria-label="运行状态">
-              <h2><span class="load-dot"></span>运行状态<span v-if="readingsCurrent" class="health-live">实时</span>
-                <svg v-if="health.tone !== 'unavailable'" class="health-pulse" viewBox="0 0 76 24" aria-hidden="true"><path class="pulse-base" d="M1 13H23L28 7L34 20L41 3L47 13H75" /><path class="pulse-light" d="M1 13H23L28 7L34 20L41 3L47 13H75" /></svg>
+            <article class="load-card" :class="loadState" aria-label="系统负载">
+              <h2><span class="load-dot"></span>系统负载<span v-if="readingsCurrent" class="health-live">实时</span>
+                <svg v-if="loadState !== 'unavailable'" class="health-pulse" viewBox="0 0 76 24" aria-hidden="true"><path class="pulse-base" d="M1 13H23L28 7L34 20L41 3L47 13H75" /><path class="pulse-light" d="M1 13H23L28 7L34 20L41 3L47 13H75" /></svg>
               </h2>
-              <div class="load-copy"><strong>{{ health.label }}</strong><span title="1 分钟平均负载 / CPU 核数"><small>负载 </small>{{ snapshot.load[0]?.toFixed(2) ?? '—' }}<small> / {{ snapshot.cpuCores }} 核</small></span></div>
-              <ResourceGauge label="负载占核心数比例" :value="loadPercent" :state="metricState(loadPercent, 'load')" caption="系统负载" />
-              <div class="load-footnote" role="status" :title="health.reason"><AppIcon :name="health.tone === 'normal' ? 'check' : 'info'" tone="inherit" :size="14" /><span>{{ health.reason }}</span></div>
+              <div class="load-copy">
+                <strong title="1 分钟平均负载">{{ snapshot.load[0]?.toFixed(2) ?? '—' }}<small> / {{ snapshot.cpuCores }} 核</small></strong>
+                <span class="load-status">{{ loadLabel }}</span>
+              </div>
+              <ResourceGauge label="负载占核心数比例" :value="loadPercent" :state="loadState" caption="负载 / 核心数" />
+              <div class="load-footnote" :class="health.tone" role="status" aria-label="资源提示" :title="`${health.label}：${health.reason}`">
+                <AppIcon :name="health.tone === 'normal' ? 'check' : 'info'" tone="inherit" :size="14" />
+                <div><strong v-if="health.tone !== 'normal'">{{ health.label }}</strong><span>{{ health.reason }}</span></div>
+              </div>
             </article>
             <div class="resource-metrics">
               <article class="resource-card" :class="cpuState" aria-label="CPU 使用率">
@@ -224,7 +235,6 @@ h2 { font-size: 14px; line-height: 22px; font-weight: 600; }
 .load-card { position: relative; padding: 24px; --load-accent: var(--monitor-green); background: var(--surface); overflow: hidden; }
 .load-card.elevated { --load-accent: var(--monitor-warning); } .load-card.high { --load-accent: var(--monitor-danger); }
 .load-card.unavailable { --load-accent: var(--muted); }
-.load-card:not(.unavailable) { border-color: color-mix(in srgb, var(--load-accent) 25%, var(--monitor-border)); }
 .load-card h2 { display: flex; align-items: center; gap: 8px; color: var(--subtle); font-size: 13px; font-weight: 500; }
 .health-pulse { width: 48px; height: 20px; margin-left: 4px; flex-shrink: 0; color: var(--load-accent); fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
 .pulse-base { opacity: .28; }
@@ -236,15 +246,21 @@ h2 { font-size: 14px; line-height: 22px; font-weight: 600; }
 .load-card.normal .load-dot::after { content: ""; position: absolute; inset: -4px; border: 1px solid var(--load-accent); border-radius: 50%; animation: healthy-breath 4s ease-out infinite; pointer-events: none; }
 @keyframes healthy-breath { 0%, 100% { transform: scale(.7); opacity: 0; } 30% { opacity: .4; } 80% { transform: scale(1.5); opacity: 0; } }
 .load-copy { position: relative; z-index: 1; margin-top: 27px; width: max-content; }
-.load-copy > strong { display: block; color: var(--load-accent); font-size: 34px; font-weight: 700; letter-spacing: -1.4px; line-height: 42px; text-shadow: 0 0 var(--gauge-text-glow, 0px) color-mix(in srgb, var(--load-accent) 16%, transparent); }
-.load-card.unavailable .load-copy > strong { font-size: 28px; text-shadow: none; }
-.load-copy > span { display: block; margin-top: 9px; color: var(--ink); font-size: 19px; line-height: 26px; }
-.load-copy small { color: var(--subtle); font-size: 12px; }
+.load-copy > strong { display: block; color: var(--ink); font-size: 36px; font-weight: 600; letter-spacing: -1px; line-height: 42px; font-variant-numeric: tabular-nums; }
+.load-card.unavailable .load-copy > strong { color: var(--muted); }
+.load-copy small { color: var(--subtle); font-size: 12px; font-weight: 400; letter-spacing: 0; }
+.load-copy > .load-status { display: inline-flex; align-items: center; margin-top: 8px; padding: 2px 6px; border-radius: 4px; color: var(--load-accent); background: color-mix(in srgb, var(--load-accent) 8%, transparent); font-size: 10px; line-height: 16px; }
 .load-card :deep(.resource-gauge) { position: absolute; top: 42px; right: 16px; width: 138px; height: 138px; }
-.load-footnote { --icon-color: currentColor; position: absolute; bottom: 20px; left: 24px; right: 24px; display: flex; align-items: center; gap: 7px; padding-top: 14px; border-top: 1px solid color-mix(in srgb, var(--load-accent) 14%, transparent); font-size: 11px; color: var(--subtle); }
-.load-footnote > .app-icon { flex-shrink: 0; color: var(--load-accent); }
-.readings-unavailable .load-copy > span, .readings-unavailable .resource-copy > strong { color: var(--muted); }
-.load-footnote > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.load-footnote { --icon-color: currentColor; position: absolute; bottom: 18px; left: 24px; right: 24px; display: flex; align-items: center; gap: 7px; padding-top: 12px; border-top: 1px solid var(--monitor-border); color: var(--muted); }
+.load-footnote > .app-icon { flex-shrink: 0; }
+.load-footnote > div { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.load-footnote strong { font-size: 10px; line-height: 14px; font-weight: 500; }
+.load-footnote span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 10px; line-height: 15px; color: var(--subtle); }
+.load-footnote.normal > .app-icon { color: var(--monitor-green); }
+.load-footnote.elevated { color: var(--monitor-warning); }
+.load-footnote.high { color: var(--monitor-danger); }
+.load-footnote.unavailable { color: var(--muted); }
+.readings-unavailable .resource-copy > strong { color: var(--muted); }
 .resource-metrics { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); background: var(--surface); padding: 18px 0; }
 .resource-card { position: relative; min-width: 0; text-align: center; border-left: 1px solid var(--monitor-border); }
 .resource-card:first-child { border-left: 0; }
@@ -335,8 +351,7 @@ td strong { font-weight: 500; line-height: 20px; } td small { color: var(--muted
   .resource-overview { grid-template-columns: minmax(0, 1fr) minmax(0, 2.2fr); gap: 12px; }
   .load-card { padding: 20px; }
   .load-card :deep(.resource-gauge) { width: 120px; height: 120px; right: 8px; top: 48px; }
-  .load-copy > strong { font-size: 28px; }
-  .load-card.unavailable .load-copy > strong { font-size: 24px; }
+  .load-copy > strong { font-size: 30px; }
   .load-footnote { left: 20px; right: 20px; font-size: 10px; }
   .resource-copy > .capacity-value { font-size: 16px; }
   .capacity-value span { font-size: 11px; }
@@ -346,9 +361,9 @@ td strong { font-weight: 500; line-height: 20px; } td small { color: var(--muted
 }
 @media (max-width: 850px) {
   .resource-overview { grid-template-columns: minmax(0, 1fr); }
-  .load-card { height: 178px; }
+  .load-card { height: 190px; }
   .load-copy { margin-top: 10px; }
-  .load-copy > span { margin-top: 4px; }
+  .load-copy > .load-status { margin-top: 4px; }
   .load-card :deep(.resource-gauge) { width: 132px; height: 132px; top: 8px; right: 20px; }
   .load-footnote { display: flex; bottom: 12px; padding-top: 0; border-top: 0; }
   .resource-metrics { height: 240px; }

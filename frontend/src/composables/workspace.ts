@@ -22,6 +22,7 @@ import { errorMessage, parentPath } from "../lib/format";
 
 export interface SessionView extends SessionInfo {
   closed: boolean;
+  disconnectReason?: string;
   terminalClosed: boolean;
   generation: number;
   workspace: "terminal" | "files" | "monitor";
@@ -29,6 +30,7 @@ export interface SessionView extends SessionInfo {
   filesOpened: boolean;
   filesDocked: boolean;
   appearanceOpen: boolean;
+  filePaths?: { local: string; remote: string };
   operation: string;
   detected: boolean;
 }
@@ -56,6 +58,7 @@ export function createWorkspace() {
     closing = reactive(new Set<string>()),
     transfers = ref<TransferInfo[]>([]),
     resource = ref<ResourceSnapshot | null>(null);
+  const lastCompletedTransfer = shallowRef<TransferInfo | null>(null);
   const authPrompt = shallowRef<{
     host: HostConfig;
     submit: (secret: string) => Promise<void>;
@@ -101,9 +104,19 @@ export function createWorkspace() {
   function fail(e: unknown) {
     if (alive) error.value = errorMessage(e);
   }
+  let settingsReturnView = "hosts";
   function showSettings() {
+    if (view.value !== "settings") settingsReturnView = view.value;
     settingsOpened.value = true;
     view.value = "settings";
+  }
+  function closeSettings() {
+    settingsOpened.value = false;
+    if (view.value === "settings") {
+      view.value = settingsReturnView === "hosts" || sessions.value.some(s => s.id === settingsReturnView)
+        ? settingsReturnView
+        : sessions.value[sessions.value.length - 1]?.id || "hosts";
+    }
   }
   function updateTransfer(t: TransferInfo, notify = true) {
     const index = transfers.value.findIndex((v) => v.id === t.id);
@@ -130,9 +143,12 @@ export function createWorkspace() {
     }
     // Only the first accepted completion invalidates its destination directory.
     // Progress, duplicate completion events and startup history do not trigger IO.
-    if (notify && t.status === "completed" && previousStatus !== "completed" && t.destination) {
-      const change = { endpoint: t.destination, path: parentPath(t.destinationPath) };
-      for (const listener of directoryListeners) listener(change);
+    if (notify && t.status === "completed" && previousStatus !== "completed") {
+      lastCompletedTransfer.value = t;
+      if (t.destination) {
+        const change = { endpoint: t.destination, path: parentPath(t.destinationPath) };
+        for (const listener of directoryListeners) listener(change);
+      }
     }
   }
   function rememberStop(promise: Promise<() => void>) {
@@ -233,6 +249,12 @@ export function createWorkspace() {
           await api.disconnectSession(next.id);
           return;
         }
+        const previous = sessions.value[index]!;
+        next.workspace = previous.workspace;
+        next.filesOpened = previous.filesOpened;
+        next.monitorOpened = previous.monitorOpened;
+        next.filePaths = previous.filePaths ? { ...previous.filePaths } : undefined;
+        if (next.workspace === "files") next.operation = "文件管理";
         sessions.value.splice(index, 1, next);
       } else sessions.value.push(next);
       if (!stay) view.value = next.id;
@@ -304,7 +326,7 @@ export function createWorkspace() {
       const index = sessions.value.findIndex((v) => v.id === s.id);
       if (index >= 0) sessions.value.splice(index, 1);
       if (view.value === s.id)
-        view.value = sessions.value[Math.max(0, index - 1)]?.id || "hosts";
+        view.value = sessions.value[Math.max(0, index - 1)]?.id || (settingsOpened.value ? "settings" : "hosts");
     } catch (e) {
       fail(e);
     } finally {
@@ -372,6 +394,7 @@ export function createWorkspace() {
         const s = sessions.value.find((v) => v.id === event.sessionId);
         if (s) {
           s.closed = true;
+          s.disconnectReason = event.reason || "SSH 连接已断开";
           s.terminalClosed = true;
           s.filesDocked = false;
           s.operation = event.reason || "SSH 已断开";
@@ -450,6 +473,7 @@ export function createWorkspace() {
     attempts,
     closing,
     transfers,
+    lastCompletedTransfer,
     resource,
     authPrompt,
     highlight,
@@ -460,6 +484,7 @@ export function createWorkspace() {
     reloadHosts,
     fail,
     showSettings,
+    closeSettings,
     updateTransfer,
     onDirectoryChanged,
     connect,

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import {
+  IconList,
   IconDesktop,
   IconStorage,
   IconFolder,
@@ -36,6 +37,7 @@ import {
   IconDashboard,
 } from "@arco-design/web-vue/es/icon";
 const icons = {
+  list: IconList,
   server: IconStorage,
   desktop: IconDesktop,
   folder: IconFolder,

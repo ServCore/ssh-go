@@ -219,6 +219,8 @@ export const listFiles = (endpoint: FileEndpoint, path: string) =>
   call<FileEntry[]>("list_files", { endpoint, path });
 export const resolveFilePath = (endpoint: FileEndpoint, path: string) =>
   call<string>("resolve_file_path", { endpoint, path });
+export const createFile = (endpoint: FileEndpoint, path: string) =>
+  call<void>("create_file", { endpoint, path });
 export const mkdirFile = (endpoint: FileEndpoint, path: string) =>
   call<void>("mkdir_file", { endpoint, path });
 export const renameFile = (

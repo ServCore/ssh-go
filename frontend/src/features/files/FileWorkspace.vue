@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, shallowRef } from "vue";
+import { computed, onBeforeUnmount, onMounted, ref, shallowRef, watch } from "vue";
 import FilePanel from "./FilePanel.vue";
 import type { PanelState } from "./FilePanel.vue";
 import AppIcon from "../../components/AppIcon.vue";
@@ -21,12 +21,14 @@ const props = defineProps<{
   closed: boolean;
   visible: boolean;
   compact?: boolean;
+  initialLocalPath?: string;
+  initialRemotePath?: string;
 }>();
-const emit = defineEmits<{ expand: []; close: [] }>();
+const emit = defineEmits<{ expand: []; close: []; paths: [paths: { local: string; remote: string }] }>();
 const w = useWorkspace();
 const home = ref(""),
   local = shallowRef<PanelState>({ path: "", selections: [] }),
-  remote = shallowRef<PanelState>({ path: ".", selections: [] }),
+  remote = shallowRef<PanelState>({ path: props.initialRemotePath || ".", selections: [] }),
   busy = ref(false),
   error = ref(""),
   notice = ref(""),
@@ -42,10 +44,13 @@ const localEndpoint: FileEndpoint = { kind: "local" },
 const pageVisible = ref(!document.hidden);
 const panelsVisible = computed(() => props.visible && pageVisible.value);
 function visibility() { pageVisible.value = !document.hidden; }
+watch(() => [local.value.path, remote.value.path], ([localPath, remotePath]) => {
+  if (localPath && remotePath) emit("paths", { local: localPath, remote: remotePath });
+});
 onMounted(async () => {
   document.addEventListener("visibilitychange", visibility);
   try {
-    const path = await getHomeDirectory();
+    const path = props.initialLocalPath || await getHomeDirectory();
     if (alive) home.value = path;
   } catch (e) {
     if (alive) error.value = errorMessage(e);
@@ -175,6 +180,25 @@ function download(entries: FileEntry[]) {
     local.value.path,
   );
 }
+// Keep drag contents inside this workspace. The data transfer carries only an
+// opaque token; external payloads cannot choose arbitrary source paths.
+const drag = shallowRef<{ token: string; kind: "local" | "remote"; entries: FileEntry[] } | null>(null);
+function beginDrag(kind: "local" | "remote", entries: FileEntry[], event: DragEvent) {
+  if (props.closed || busy.value || !event.dataTransfer || !entries.length) { event.preventDefault(); return; }
+  const token = crypto.randomUUID();
+  drag.value = { token, kind, entries: entries.map(entry => ({ ...entry })) };
+  event.dataTransfer.effectAllowed = "copy";
+  event.dataTransfer.setData("application/x-ssh-go-files", token);
+}
+function endDrag() { drag.value = null; }
+function dropOn(kind: "local" | "remote") {
+  const source = drag.value;
+  endDrag();
+  if (!source || source.kind === kind || props.closed || busy.value) return;
+  if (kind === "remote") upload(source.entries);
+  else download(source.entries);
+}
+watch(() => [panelsVisible.value, props.closed], endDrag);
 function saveRatio() {
   void setPreference("files.panelRatio", ratio.value).catch(w.fail);
 }
@@ -217,6 +241,10 @@ function resize(event: PointerEvent) {
         :visible="panelsVisible"
         transfer-action="upload"
         :transfer-disabled="closed || busy"
+        :drop-token="drag?.kind === 'remote' ? drag.token : undefined"
+        @drag-start="(entries, event) => beginDrag('local', entries, event)"
+        @drag-end="endDrag"
+        @drop-files="dropOn('local')"
         @state="local = $event"
         @transfer="upload"
         @operation="panelsVisible && w.active.value && (w.active.value.operation = $event)"
@@ -247,12 +275,16 @@ function resize(event: PointerEvent) {
       ></div>
       <FilePanel
         :endpoint="remoteEndpoint"
-        initial-path="."
+        :initial-path="initialRemotePath || '.'"
         title="远程文件"
         :visible="panelsVisible"
         transfer-action="download"
         :disabled="closed"
         :transfer-disabled="closed || busy || !local.path"
+        :drop-token="drag?.kind === 'local' ? drag.token : undefined"
+        @drag-start="(entries, event) => beginDrag('remote', entries, event)"
+        @drag-end="endDrag"
+        @drop-files="dropOn('remote')"
         @state="remote = $event"
         @transfer="download"
         @operation="panelsVisible && w.active.value && (w.active.value.operation = $event)"

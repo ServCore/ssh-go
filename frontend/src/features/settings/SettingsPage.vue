@@ -108,7 +108,7 @@ async function forgetNow() {
 }
 </script>
 <template>
-  <section class="settings-page">
+  <section id="settings-panel" class="settings-page" role="tabpanel" aria-labelledby="settings-tab">
     <div class="page-heading">
       <div>
         <div class="eyebrow">工作区偏好</div>

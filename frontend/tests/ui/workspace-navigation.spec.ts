@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import { desktopFixture } from "./fixtures/desktop";
-import { selectSession } from "./fixtures/navigation";
+import { editDirectoryPath, selectSession } from "./fixtures/navigation";
 
 const selectedTab = (page: Page) => page.getByRole("tab", { selected: true });
 async function connect(page: Page, name: string) {
@@ -15,7 +15,7 @@ async function twoSessions(page: Page) {
   await connect(page, "生产 API");
 }
 
-test("global server entry and session tools stay on separate levels without resetting workspaces", async ({ page }, info) => {
+test("global settings entry and session tools stay on separate levels without resetting workspaces", async ({ page }, info) => {
   await twoSessions(page);
   await page.getByRole("button", { name: "监控", exact: true }).click();
   await expect(page.getByRole("region", { name: "服务器监控", exact: true })).toContainText("37.5%");
@@ -27,7 +27,7 @@ test("global server entry and session tools stay on separate levels without rese
   await expect(nav.getByRole("button", { name: "返回服务器", exact: true })).toHaveCount(0);
   await expect(page.locator(".topbar").getByRole("button", { name: "返回服务器", exact: true })).toBeVisible();
   await expect(nav.getByRole("button", { name: "端口转发", exact: true })).toHaveCount(0);
-  const entry = (await page.getByRole("button", { name: "返回服务器", exact: true }).boundingBox())!;
+  const entry = (await page.locator(".topbar-actions").getByRole("button", { name: "设置", exact: true }).boundingBox())!;
   expect(entry.y + entry.height).toBeLessThanOrEqual((await nav.boundingBox())!.y);
   expect(entry.x).toBeGreaterThan(1000);
   await expect(selectedTab(page)).toHaveText("生产 API");
@@ -42,13 +42,14 @@ test("global server entry and session tools stay on separate levels without rese
   expect(Math.abs(address.y + address.height / 2 - controls.y - controls.height / 2)).toBeLessThan(2);
   expect(controls.x).toBeGreaterThan(address.x + address.width);
   await page.screenshot({ path: info.outputPath("navigation-d-light.png"), animations: "disabled" });
-  await expect(page.getByRole("tablist", { name: "已打开的连接" }).getByRole("tab")).toHaveCount(2);
-  const tabs = (await page.getByRole("tablist", { name: "已打开的连接" }).boundingBox())!;
+  await expect(page.getByRole("tablist", { name: "已打开的工作区" }).getByRole("tab")).toHaveCount(2);
+  const tabs = (await page.getByRole("tablist", { name: "已打开的工作区" }).boundingBox())!;
   expect(tabs.y + tabs.height).toBeLessThanOrEqual((await nav.boundingBox())!.y);
   await page.getByRole("tab", { name: "测试服务器", exact: true }).click();
   await page.getByRole("button", { name: "SFTP", exact: true }).click();
   await expect(nav.getByRole("group", { name: "监控采集控制" })).toHaveCount(0);
   await expect(page.getByLabel("远程文件目录路径")).toHaveValue("/remote");
+  await editDirectoryPath(page.getByLabel("远程文件目录路径"));
   await page.getByLabel("远程文件目录路径").fill("/retained");
   await page.getByLabel("远程文件目录路径").press("Enter");
   await selectSession(page, "生产 API");
@@ -120,24 +121,84 @@ test("long host names and scrollable connection tabs fit desktop and narrow wind
     expect(await page.locator(".topbar").evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true);
     const nav = page.getByRole("banner", { name: "工作区导航" });
     expect(await nav.evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true);
-    const popup = (await page.getByRole("tablist", { name: "已打开的连接" }).boundingBox())!;
+    const popup = (await page.getByRole("tablist", { name: "已打开的工作区" }).boundingBox())!;
     expect(popup.x).toBeGreaterThanOrEqual(0);
     expect(popup.x + popup.width).toBeLessThanOrEqual(width);
     const tab = page.getByRole("tab", { name: "生产 API", exact: true });
     await tab.focus();
     await tab.press("Home");
     await expect(page.getByRole("tab", { name, exact: true })).toBeFocused();
-    const currentList = (await page.getByRole("tablist", { name: "已打开的连接" }).boundingBox())!;
+    const currentList = (await page.getByRole("tablist", { name: "已打开的工作区" }).boundingBox())!;
     const tabBox = (await page.getByRole("tab", { name, exact: true }).boundingBox())!;
     expect(tabBox.x).toBeGreaterThanOrEqual(currentList.x - 1);
     expect(tabBox.x + tabBox.width).toBeLessThanOrEqual(currentList.x + currentList.width + 1);
     if (width === 480) {
-      await expect(page.getByRole("button", { name: "向右滚动连接标签" })).toBeVisible();
-      await page.getByRole("button", { name: "向右滚动连接标签" }).click();
+      await expect(page.getByRole("button", { name: "向右滚动工作区标签" })).toBeVisible();
+      await page.getByRole("button", { name: "向右滚动工作区标签" }).click();
       await expect.poll(() => page.locator(".connection-tab-list").evaluate(el => el.scrollLeft)).toBeGreaterThan(0);
       await tab.focus();
       await tab.press("Home");
     }
     await page.screenshot({ path: info.outputPath(`navigation-d-${width}.png`), animations: "disabled" });
   }
+});
+
+
+test("settings opens once in the top tab row and participates in keyboard navigation", async ({ page }, info) => {
+  await twoSessions(page);
+  const settings = page.getByRole("tab", { name: "设置", exact: true });
+  const first = page.getByRole("tab", { name: "测试服务器", exact: true });
+  const second = page.getByRole("tab", { name: "生产 API", exact: true });
+  const settingsEntry = page.locator(".topbar-actions").getByRole("button", { name: "设置", exact: true });
+  await expect(settingsEntry).toHaveText("");
+  await settingsEntry.click();
+  await expect(settingsEntry).toHaveAttribute("aria-current", "page");
+  await expect(settings).toHaveAttribute("aria-selected", "true");
+  await expect(page.locator(".topbar").getByRole("tab")).toHaveCount(3);
+  await expect(page.getByRole("tabpanel", { name: "设置", exact: true })).toBeVisible();
+  await expect(page.getByRole("banner", { name: "工作区导航" })).toBeHidden();
+  await settingsEntry.click();
+  await expect(settings).toHaveCount(1);
+  await settings.focus();
+  await settings.press("ArrowLeft");
+  await expect(second).toBeFocused();
+  await expect(page.locator(".xterm:visible")).toBeVisible();
+  await second.press("End");
+  await expect(settings).toBeFocused();
+  await settings.press("ArrowRight");
+  await expect(first).toBeFocused();
+  await first.press("End");
+  await expect(settings).toBeFocused();
+  await page.setViewportSize({ width: 480, height: 820 });
+  expect(await page.locator(".topbar").evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true);
+  await expect.poll(async () => {
+    const list = (await page.getByRole("tablist", { name: "已打开的工作区" }).boundingBox())!;
+    const tab = (await settings.boundingBox())!;
+    return tab.x >= list.x - 1 && tab.x + tab.width <= list.x + list.width + 1;
+  }).toBe(true);
+  await page.screenshot({ path: info.outputPath("settings-tab-narrow.png"), animations: "disabled" });
+  await settings.press("Delete");
+  await expect(settings).toHaveCount(0);
+  await expect(first).toHaveAttribute("aria-selected", "true");
+  await expect(first).toBeFocused();
+  expect(await page.evaluate(() => (window as any).__qa.calls.filter((c: any) => c.command === "disconnect_session").length)).toBe(0);
+});
+
+test("settings tab works without connections and remains available from the server list", async ({ page }) => {
+  await desktopFixture(page);
+  await page.goto("/");
+  const settingsEntry = page.locator(".topbar-actions").getByRole("button", { name: "设置", exact: true });
+  await settingsEntry.click();
+  const settings = page.getByRole("tab", { name: "设置", exact: true });
+  await expect(settings).toHaveAttribute("aria-selected", "true");
+  await expect(page.locator(".workspace-navigation")).toHaveCount(0);
+  await page.getByRole("button", { name: "返回服务器", exact: true }).click();
+  await expect(settings).toHaveAttribute("aria-selected", "false");
+  await expect(settingsEntry).not.toHaveAttribute("aria-current", "page");
+  await settingsEntry.click();
+  await expect(page.getByRole("heading", { name: "设置", exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "关闭 设置", exact: true }).click();
+  await expect(settings).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "服务器", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "返回服务器", exact: true })).toBeFocused();
 });

@@ -1,3 +1,4 @@
+import { editDirectoryPath } from "./fixtures/navigation";
 import { expect, test, type Page } from "@playwright/test";
 import { desktopFixture } from "./fixtures/desktop";
 
@@ -223,11 +224,13 @@ test("SFTP path requests discard stale replies and file actions use the selected
     };
   });
   const path = page.getByLabel("远程文件目录路径");
+  await editDirectoryPath(path);
   await path.fill("/slow");
   await path.press("Enter");
   await expect
     .poll(() => page.evaluate(() => typeof (window as any).__qa.finishSlow))
     .toBe("function");
+  await editDirectoryPath(path);
   await path.fill("/new");
   await path.press("Enter");
   await expect(
@@ -302,6 +305,7 @@ test("SFTP uploads live in the remote heading and target the current directory",
   expect((await local.boundingBox())!.y).toBeCloseTo(workspaceBounds.y, 0);
   await page.screenshot({ path: info.outputPath("sftp-integrated-actions.png"), animations: "disabled" });
   const path = page.getByLabel("远程文件目录路径");
+  await editDirectoryPath(path);
   await path.fill("/target");
   await path.press("Enter");
   await expect(remote.getByRole("button", { name: "刷新远程文件", exact: true })).toBeEnabled();
@@ -326,6 +330,7 @@ test("SFTP uploads live in the remote heading and target the current directory",
 test("terminal navigation uses SFTP for files and retains each workspace", async ({ page }) => {
   await files(page);
   const path = page.getByLabel("远程文件目录路径");
+  await editDirectoryPath(path);
   await path.fill("/retained");
   await path.press("Enter");
   await expect(page.getByRole("button", { name: "刷新远程文件", exact: true })).toBeEnabled();

@@ -214,7 +214,7 @@ function editFromDetails(host: HostConfig) {
           <ServerAvatar :system="h.remoteSystem">
             <i
               class="host-state"
-              :class="{ online: connected(h.id), pending: attempts.has(h.id) }"
+              :class="{ online: connected(h.id), pending: attempts.has(h.id), 'activity-pending': attempts.has(h.id) && w.view.value === 'hosts' }"
               :title="attempts.has(h.id) ? '连接中' : connected(h.id) ? '已连接' : '未连接'"
               :aria-label="attempts.has(h.id) ? '连接中' : connected(h.id) ? '已连接' : '未连接'"
             ></i>

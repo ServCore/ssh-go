@@ -18,7 +18,7 @@ func main() {
 	app := &App{ready: make(chan struct{})}
 	err := wails.Run(&options.App{
 		Title: "ssh-go", Menu: app.applicationMenu(),
-		Width: 1280, Height: 820, MinWidth: 800, MinHeight: 560,
+		Width: 1080, Height: 700, MinWidth: 800, MinHeight: 560,
 		AssetServer:      &assetserver.Options{Assets: assets},
 		BackgroundColour: options.NewRGB(255, 255, 255),
 		OnStartup:        app.startup, OnShutdown: app.shutdown,

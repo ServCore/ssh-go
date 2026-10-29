@@ -1,0 +1,49 @@
+name: Checks
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: checks-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  desktop:
+    name: macOS build and tests
+    runs-on: macos-14
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.1'
+          cache-dependency-path: go.sum
+      - name: Install frontend dependencies
+        run: npm --prefix frontend ci
+      - name: Install test browser
+        working-directory: frontend
+        run: npx playwright install chromium
+      - name: Build and test
+        run: make check
+      - name: Install Wails
+        run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.12.0
+      - name: Package desktop app
+        run: make build
+      - name: Verify local signature
+        run: codesign --verify --deep --strict build/bin/ssh-go.app
+      - name: Upload UI failure reports
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-failures
+          path: frontend/.test-artifacts/playwright/
+          if-no-files-found: ignore

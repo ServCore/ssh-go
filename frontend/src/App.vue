@@ -6,6 +6,7 @@ import {
   onMounted,
   provide,
   ref,
+  watch,
 } from "vue";
 import { createWorkspace, workspaceKey } from "./composables/workspace";
 import AppIcon from "./components/AppIcon.vue";
@@ -67,6 +68,30 @@ const forward = computed(() =>
   sessions.value.find((s) => s.id === forwardID.value),
 );
 const connected = computed(() => sessions.value.filter((s) => !s.closed));
+const movingTransfers = computed(() => activeTransfers.value.filter(t =>
+  ["preparing", "running", "committing", "cancelling"].includes(t.status),
+));
+const transferDirection = computed<"upload" | "download" | "swap">(() => {
+  const directions = new Set(movingTransfers.value.map(t => t.direction));
+  if (directions.size !== 1) return "swap";
+  return movingTransfers.value[0]!.direction === "upload" ? "upload" : "download";
+});
+const transferCompleted = ref(false);
+let completionTimer: ReturnType<typeof setTimeout> | undefined;
+function clearCompletion() {
+  clearTimeout(completionTimer);
+  transferCompleted.value = false;
+}
+watch(w.lastCompletedTransfer, () => {
+  clearCompletion();
+  if (document.hidden) return;
+  transferCompleted.value = true;
+  completionTimer = setTimeout(clearCompletion, 1600);
+}, { flush: "sync" });
+function motionVisibility() {
+  document.documentElement.toggleAttribute("data-motion-paused", document.hidden);
+  if (document.hidden) clearCompletion();
+}
 const aggregate = computed(() => {
   const all = activeTransfers.value,
     total = all.reduce((n, t) => n + t.bytesTotal, 0),
@@ -101,10 +126,8 @@ function menuAction(action: MenuAction) {
     case "search": paletteOpen.value = true; break;
     case "transfers": transfersOpen.value = true; break;
     case "close":
-      if (view.value === "settings") {
-        settingsOpened.value = false;
-        view.value = "hosts";
-      } else if (w.active.value) void w.closeSession(w.active.value);
+      if (view.value === "settings") w.closeSettings();
+      else if (w.active.value) void w.closeSession(w.active.value);
       break;
   }
 }
@@ -120,6 +143,8 @@ function keyboard(e: KeyboardEvent) {
   }
 }
 onMounted(async () => {
+  motionVisibility();
+  document.addEventListener("visibilitychange", motionVisibility);
   window.addEventListener("keydown", keyboard);
   stopMenu = window.runtime?.EventsOn("app:menu", (action) => menuAction(action as MenuAction));
   try {
@@ -127,6 +152,9 @@ onMounted(async () => {
   } catch { /* Keep window menus available if platform detection fails. */ }
 });
 onBeforeUnmount(() => {
+  document.removeEventListener("visibilitychange", motionVisibility);
+  document.documentElement.removeAttribute("data-motion-paused");
+  clearCompletion();
   window.removeEventListener("keydown", keyboard);
   stopMenu?.();
 });
@@ -136,22 +164,22 @@ onBeforeUnmount(() => {
     <div class="app-main">
       <header class="topbar">
         <div class="application-navigation">
-          <button class="application-brand" aria-label="服务器" title="返回服务器" @click="menuAction('hosts')">
+          <button class="application-brand" aria-label="返回服务器" title="返回服务器" :aria-current="view === 'hosts' ? 'page' : undefined" @click="menuAction('hosts')">
             <AppLogo /><strong>ssh-go</strong>
           </button>
           <ApplicationMenu v-if="!nativeMenu" :can-close="view !== 'hosts'" @action="menuAction" />
         </div>
-        <SessionTabs v-if="sessions.length" />
+        <SessionTabs v-if="sessions.length || settingsOpened" />
         <div class="topbar-actions">
           <button class="command-trigger" aria-label="搜索资源与操作" :title="`搜索资源与操作 (${w.shortcutModifier} K)`" @click="paletteOpen = true">
             <AppIcon name="search" :size="16" />
           </button>
-          <button class="servers-entry" aria-label="返回服务器" title="服务器列表" :aria-current="view === 'hosts' ? 'page' : undefined" @click="view = 'hosts'">
-            <AppIcon name="server" :size="16" /><span>服务器</span>
+          <button class="settings-entry" aria-label="设置" title="设置" :aria-current="view === 'settings' ? 'page' : undefined" @click="menuAction('settings')">
+            <AppIcon name="settings" :size="17" />
           </button>
         </div>
       </header>
-      <WorkspaceNavigation v-if="sessions.length || settingsOpened" v-show="view !== 'hosts'" />
+      <WorkspaceNavigation v-if="sessions.length" v-show="!!w.active.value" />
       <div v-if="error" class="global-error" role="alert">
         <AppIcon name="info" :size="17" /><span>{{ error }}</span
         ><button
@@ -176,6 +204,17 @@ onBeforeUnmount(() => {
           :aria-labelledby="`session-tab-${s.id}`"
           :data-session-id="s.id"
         >
+          <div v-if="s.closed || (s.workspace === 'terminal' && s.terminalClosed)" class="session-disconnected" role="status" :aria-label="`${s.hostName}${s.closed ? '连接' : '终端'}状态`">
+            <AppIcon name="info" :size="18" />
+            <div><strong>{{ s.closed ? '连接已断开' : '终端已关闭' }}</strong>
+              <span v-if="s.closed">{{ s.disconnectReason || 'SSH 连接已断开' }}。页面已保留，重新连接后可继续操作。</span>
+              <span v-else>SSH 连接仍可用，重新打开终端即可继续操作。</span>
+            </div>
+            <a-button v-if="s.closed" type="primary" size="small" :disabled="attempts.has(s.hostId)" :aria-busy="attempts.has(s.hostId)" @click="w.reconnect(s)">
+              <template #icon><AppIcon name="refresh" :size="15" :class="{ 'activity-spin': attempts.has(s.hostId) && view === s.id }" /></template>{{ attempts.has(s.hostId) ? '重连中…' : '重新连接' }}
+            </a-button>
+            <a-button v-else type="primary" size="small" @click="s.terminalClosed = false; s.generation++">重新打开终端</a-button>
+          </div>
           <div class="session-content">
             <div v-show="s.workspace === 'terminal'" class="terminal-slot">
               <TerminalPane
@@ -204,8 +243,11 @@ onBeforeUnmount(() => {
               <FileWorkspace
                 :session-id="s.id"
                 :closed="s.closed"
+                :initial-local-path="s.filePaths?.local"
+                :initial-remote-path="s.filePaths?.remote"
                 :visible="view === s.id && (s.workspace === 'files' || (s.workspace === 'terminal' && s.filesDocked))"
                 :compact="s.workspace === 'terminal'"
+                @paths="s.filePaths = $event"
                 @expand="w.selectWorkspace(s, 'files')"
                 @close="s.filesDocked = false"
               />
@@ -242,13 +284,14 @@ onBeforeUnmount(() => {
           aria-label="传输队列"
           :aria-expanded="transfersOpen"
           class="status-transfers"
-          :class="{ running: activeTransfers.length > 0 }"
+          :class="{ running: activeTransfers.length > 0, 'transfer-complete': !activeTransfers.length && transferCompleted }"
           @click="transfersOpen = !transfersOpen"
         >
-          <AppIcon name="swap" :size="14" />{{
+          <AppIcon :name="activeTransfers.length ? transferDirection : transferCompleted ? 'check' : 'swap'" :size="14" tone="inherit"
+            :class="movingTransfers.length ? `activity-${transferDirection}` : { 'completion-feedback': !activeTransfers.length && transferCompleted }" />{{
             activeTransfers.length
               ? `${activeTransfers.length} 个传输 · ${aggregate}`
-              : "传输队列空闲"
+              : transferCompleted ? "传输已完成" : "传输队列空闲"
           }}
         </button>
         <div

@@ -170,6 +170,46 @@ func (f *fileSystem) mkdir(p string) error {
 	}
 	return os.Mkdir(p, 0700)
 }
+
+// mkdirAll is used by explicit directory creation; transfers keep mkdir's
+// exclusive single-directory behavior for their staging and conflict checks.
+func (f *fileSystem) mkdirAll(p string) error {
+	if err := f.ctx.Err(); err != nil {
+		return err
+	}
+	if p == "" || strings.IndexByte(p, 0) >= 0 {
+		return fail("invalid_path", "目录路径无效")
+	}
+	p = path.Clean(p)
+	if p == "." || p == ".." || p == "/" {
+		return fail("invalid_path", "不能修改根目录")
+	}
+	target, err := f.destination(p)
+	if err == nil {
+		// SFTP RealPath may succeed for a parent that does not exist yet.
+		_, err = f.lstat(path.Dir(target))
+	}
+	if os.IsNotExist(err) {
+		if err = f.mkdirAll(path.Dir(p)); err != nil {
+			return err
+		}
+		target, err = f.destination(p)
+	}
+	if err != nil {
+		return err
+	}
+	info, err := f.lstat(target)
+	if err == nil {
+		if info.IsDir() {
+			return nil
+		}
+		return fail("file_exists", "目标路径已存在且不是目录")
+	}
+	if !os.IsNotExist(err) {
+		return err
+	}
+	return f.mkdir(target)
+}
 func (f *fileSystem) remove(p string, directory bool) error {
 	if f.remote != nil {
 		if directory {
@@ -343,12 +383,24 @@ func (e *Engine) FileAction(command string, a Arguments) error {
 		}
 		return f.rename(source, destination)
 	}
+	if command == "mkdir_file" {
+		return f.mkdirAll(a.Path)
+	}
 	p, err := f.destination(a.Path)
 	if err != nil {
 		return err
 	}
-	if command == "mkdir_file" {
-		return f.mkdir(p)
+	if command == "create_file" {
+		if _, err := f.lstat(p); err == nil {
+			return fail("file_exists", "目标路径已存在，请使用其他文件名")
+		} else if !os.IsNotExist(err) {
+			return err
+		}
+		file, err := f.open(p, os.O_WRONLY|os.O_CREATE|os.O_EXCL)
+		if err != nil {
+			return err
+		}
+		return file.Close()
 	}
 	info, err := f.lstat(p)
 	if err != nil {

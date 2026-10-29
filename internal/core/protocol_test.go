@@ -35,6 +35,8 @@ type testSSH struct {
 	wg          sync.WaitGroup
 	windows     chan [2]uint32
 	noSFTP      bool
+	noKeepalive bool
+	keepalives  chan struct{}
 	monitorMode string
 }
 
@@ -60,8 +62,11 @@ func newTestSSH(t *testing.T, modes ...string) *testSSH {
 	if err != nil {
 		t.Fatal(err)
 	}
-	s := &testSSH{listener: l, signer: signer, userKey: userSigner, userPrivate: userKey, root: t.TempDir(), connections: map[net.Conn]bool{}, windows: make(chan [2]uint32, 16)}
+	s := &testSSH{listener: l, signer: signer, userKey: userSigner, userPrivate: userKey, root: t.TempDir(), connections: map[net.Conn]bool{}, windows: make(chan [2]uint32, 16), keepalives: make(chan struct{}, 16)}
 	for _, mode := range modes {
+		if mode == "no-keepalive" {
+			s.noKeepalive = true
+		}
 		if mode == "no-sftp" {
 			s.noSFTP = true
 		}
@@ -102,7 +107,24 @@ func newTestSSH(t *testing.T, modes ...string) *testSSH {
 					return
 				}
 				defer conn.Close()
-				go ssh.DiscardRequests(requests)
+				s.wg.Add(1)
+				go func() {
+					defer s.wg.Done()
+					for request := range requests {
+						if request.Type == "keepalive@openssh.com" {
+							select {
+							case s.keepalives <- struct{}{}:
+							default:
+							}
+							if s.noKeepalive {
+								continue
+							}
+						}
+						if request.WantReply {
+							_ = request.Reply(false, nil)
+						}
+					}
+				}()
 				for ch := range channels {
 					s.wg.Add(1)
 					go func() { defer s.wg.Done(); s.handleChannel(ch) }()

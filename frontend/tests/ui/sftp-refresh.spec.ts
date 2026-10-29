@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import { desktopFixture } from "./fixtures/desktop";
-import { selectSession } from "./fixtures/navigation";
+import { editDirectoryPath, selectSession } from "./fixtures/navigation";
 
 async function connectFiles(page: Page, name = "测试服务器") {
   await page.getByRole("group", { name: `服务器 ${name}`, exact: true }).dblclick();
@@ -182,6 +182,7 @@ test("startup history causes no refresh, and completion for the old directory do
       ? new Promise(resolve => { qa.finishResolve = () => resolve("/new"); }) : original(command, args);
   });
   const path = page.getByRole("textbox", { name: "远程文件目录路径", exact: true });
+  await editDirectoryPath(path);
   await path.fill("/new");
   await path.press("Enter");
   await expect.poll(() => page.evaluate(() => typeof (window as any).__qa.finishResolve)).toBe("function");

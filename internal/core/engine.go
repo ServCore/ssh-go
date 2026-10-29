@@ -160,7 +160,7 @@ func (e *Engine) Call(command string, a Arguments) (any, error) {
 		return e.ListFiles(a.Endpoint, a.Path)
 	case "resolve_file_path":
 		return e.ResolvePath(a.Endpoint, a.Path)
-	case "mkdir_file", "rename_file", "delete_file":
+	case "mkdir_file", "create_file", "rename_file", "delete_file":
 		return nil, e.FileAction(command, a)
 	case "start_transfer":
 		return e.StartTransfer(a.Request)

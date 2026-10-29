@@ -207,7 +207,10 @@ onMounted(async () => {
     if (input) flush();
     if (props.visible) term.focus();
   } catch (e) {
-    if (!disposed) error.value = errorMessage(e);
+    if (!disposed) {
+      error.value = errorMessage(e);
+      emit("closed", error.value);
+    }
   }
 });
 watch(

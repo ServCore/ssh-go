@@ -81,8 +81,12 @@ test("cancelling an attempt suppresses late success without clearing the replace
   await expect(
     page.getByRole("button", { name: cancelName, exact: true }),
   ).toBeVisible();
+  const pending = page.locator(".host-state.activity-pending");
+  await expect(pending).toHaveCount(1);
+  expect(await pending.evaluate(el => getComputedStyle(el, "::after").animationName)).toBe("activity-pending");
   const first = await page.evaluate(() => (window as any).__qa.attemptIds[0]);
   await page.getByRole("button", { name: cancelName, exact: true }).click();
+  await expect(pending).toHaveCount(0);
   await expect(
     page.getByRole("group", { name: cardName, exact: true }),
   ).toBeVisible();
@@ -154,7 +158,7 @@ test("cancelled authentication errors do not prompt for passwords or replace the
   ).toBeVisible();
   await expect(page.getByRole("dialog")).toHaveCount(0);
   await expect(page.getByRole("alert")).toHaveCount(0);
-  await page.getByRole("button", { name: "服务器", exact: true }).click();
+  await page.getByRole("button", { name: "返回服务器", exact: true }).click();
   await expect(
     page.getByRole("group", { name: cardName, exact: true }),
   ).toBeVisible();
@@ -189,7 +193,7 @@ test("cancelling during fingerprint confirmation prevents an approved-key retry"
   ).toHaveCount(0);
 });
 
-test("closing the last session preserves the independent settings workspace", async ({
+test("closing the last session preserves the settings tab", async ({
   page,
 }) => {
   await desktopFixture(page);
@@ -200,9 +204,9 @@ test("closing the last session preserves the independent settings workspace", as
   await page
     .getByRole("button", { name: `关闭连接 ${hostName}`, exact: true })
     .click();
-  await expect(page.locator(".workspace-navigation")).toBeVisible();
-  await expect(page.getByRole("tab", { selected: true })).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "关闭 设置", exact: true })).toBeVisible();
+  await expect(page.locator(".workspace-navigation")).toHaveCount(0);
+  await expect(page.getByRole("tab", { selected: true })).toHaveText("设置");
+  await expect(page.locator(".topbar").getByRole("button", { name: "关闭 设置", exact: true })).toBeVisible();
   await expect(page.getByRole("heading", { name: "设置", exact: true })).toBeVisible();
   await expect(page.getByRole("dialog")).toHaveCount(0);
 });
@@ -243,7 +247,7 @@ test("concurrent session closes reconcile selection against the remaining sessio
   });
   await page.goto("/");
   for (const name of ["A", "B"]) {
-    await page.getByRole("button", { name: "服务器", exact: true }).click();
+    await page.getByRole("button", { name: "返回服务器", exact: true }).click();
     await page.getByRole("group", { name: `服务器 ${name}`, exact: true }).dblclick();
     await expect(page.getByRole("tab", { selected: true })).toHaveText(name);
   }

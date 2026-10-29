@@ -1,9 +1,12 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, shallowRef, watch } from "vue";
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch } from "vue";
 import { useVirtualizer } from "@tanstack/vue-virtual";
 import type { FileEndpoint, FileEntry } from "../../lib/types";
 import {
   confirmAction,
+  createFile,
+  getPreferences,
+  setPreference,
   deleteFile,
   listFiles,
   mkdirFile,
@@ -17,6 +20,8 @@ import {
   parentPath,
 } from "../../lib/format";
 import AppIcon from "../../components/AppIcon.vue";
+import FilePathBar from "./FilePathBar.vue";
+import FileContextMenu, { type FileMenuAction } from "./FileContextMenu.vue";
 import BaseModal from "../../components/BaseModal.vue";
 import { useWorkspace } from "../../composables/workspace";
 export interface PanelState {
@@ -31,14 +36,19 @@ const props = defineProps<{
   transferAction: "upload" | "download";
   disabled?: boolean;
   transferDisabled?: boolean;
+  dropToken?: string;
 }>();
 const emit = defineEmits<{
   state: [state: PanelState];
   transfer: [entries: FileEntry[]];
   operation: [text: string];
+  dragStart: [entries: FileEntry[], event: DragEvent];
+  dragEnd: [];
+  dropFiles: [];
 }>();
 const path = ref(props.initialPath),
   pathInput = ref(props.initialPath),
+  pathControl = ref<InstanceType<typeof FilePathBar>>(),
   // Directory replies are immutable snapshots, replaced together after a load.
   // Deep reactivity would proxy and track every entry, including offscreen rows.
   entries = shallowRef<FileEntry[]>([]),
@@ -49,7 +59,7 @@ const path = ref(props.initialPath),
   busy = ref(false),
   error = ref(""),
   scroll = ref<HTMLDivElement | null>(null),
-  action = ref<"mkdir" | "rename" | null>(null),
+  action = ref<"mkdir" | "create" | "rename" | null>(null),
   value = ref(""),
   saving = ref(false),
   actionError = ref("");
@@ -102,17 +112,90 @@ const selections = computed(() => {
   const paths = selected.value;
   return paths.size ? entries.value.filter((e) => paths.has(e.path)) : [];
 });
+const mode = ref<"list" | "icons">("list"), gridColumns = ref(1), dropActive = ref(false);
+const columns = computed(() => mode.value === "icons" ? gridColumns.value : 1);
+const preferenceKey = `files.${props.endpoint.kind}.viewMode`;
+let modeRevision = 0;
+let preferenceWrite: Promise<unknown> = Promise.resolve();
+async function setMode(next: "list" | "icons") {
+  modeRevision++;
+  mode.value = next;
+  preferenceWrite = preferenceWrite.catch(() => {}).then(() => setPreference(preferenceKey, next));
+  try { await preferenceWrite; } catch (e) { if (alive) error.value = errorMessage(e); }
+}
 const virtualizer = useVirtualizer(
   computed(() => ({
-    count: displayed.value.length,
+    count: Math.ceil(displayed.value.length / columns.value),
     getScrollElement: () => scroll.value,
-    estimateSize: () => 37,
-    overscan: 12,
-    getItemKey: (index: number) => displayed.value[index]!.path,
+    estimateSize: () => mode.value === "icons" ? 126 : 37,
+    overscan: mode.value === "icons" ? 3 : 12,
+    getItemKey: (index: number) => displayed.value[index * columns.value]!.path,
   })),
 );
 const virtualRows = computed(() => virtualizer.value.getVirtualItems());
 const totalHeight = computed(() => virtualizer.value.getTotalSize());
+function rowEntries(index: number) {
+  const start = index * columns.value;
+  return displayed.value.slice(start, start + columns.value).map((entry, offset) => ({ entry, index: start + offset }));
+}
+watch([mode, columns], async () => {
+  await nextTick();
+  virtualizer.value.measure();
+});
+watch(mode, () => virtualizer.value.scrollToOffset(0));
+const menu = ref<{ x: number; y: number } | null>(null);
+let menuAnchor: HTMLElement | undefined;
+function closeMenu(restore = false) {
+  menu.value = null;
+  if (restore && menuAnchor?.isConnected) menuAnchor.focus();
+}
+function showMenu(event: MouseEvent, target?: HTMLElement) {
+  const element = target || event.target as HTMLElement | null;
+  const item = element?.closest<HTMLElement>("[data-file-path]");
+  menuAnchor = item || scroll.value || undefined;
+  if (item) {
+    const entry = entries.value.find(e => e.path === item.dataset.filePath);
+    if (entry && !selected.value.has(entry.path)) select(entry, event);
+  }
+  menu.value = { x: event.clientX, y: event.clientY };
+}
+function contextAction(kind: FileMenuAction) {
+  closeMenu(true);
+  if (kind === "list" || kind === "icons") void setMode(kind);
+  else if (kind === "refresh") void load();
+  else if (kind === "transfer") emit("transfer", selections.value);
+  else if (kind === "delete") void remove();
+  else chooseAction(kind);
+}
+function dragStart(entry: FileEntry, event: DragEvent) {
+  closeMenu();
+  if (props.disabled || props.transferDisabled || busy.value || saving.value || !["file", "directory"].includes(entry.kind)) {
+    event.preventDefault(); return;
+  }
+  if (!selected.value.has(entry.path)) {
+    selected.value = new Set([entry.path]);
+    anchor = entry.path;
+  }
+  emit("dragStart", selections.value, event);
+}
+function dragOver(event: DragEvent) {
+  if (!props.dropToken || props.disabled || props.transferDisabled || busy.value || saving.value || !event.dataTransfer?.types.includes("application/x-ssh-go-files")) return;
+  event.preventDefault();
+  event.dataTransfer.dropEffect = "copy";
+  dropActive.value = true;
+}
+function dragLeave(event: DragEvent) {
+  if (!(event.currentTarget as HTMLElement).contains(event.relatedTarget as Node | null)) dropActive.value = false;
+}
+function drop(event: DragEvent) {
+  event.preventDefault();
+  dropActive.value = false;
+  if (props.dropToken && !props.disabled && !props.transferDisabled && !busy.value && !saving.value && event.dataTransfer?.getData("application/x-ssh-go-files") === props.dropToken) emit("dropFiles");
+}
+watch(() => [props.dropToken, props.visible, props.disabled], () => {
+  dropActive.value = false;
+  if (!props.visible || props.disabled) closeMenu();
+});
 watch(
   [path, selections],
   () => emit("state", { path: path.value, selections: selections.value }),
@@ -200,26 +283,32 @@ function select(entry: FileEntry, event: MouseEvent | KeyboardEvent) {
 function open(entry: FileEntry) {
   if (entry.kind === "directory") void load(entry.path);
 }
-function chooseAction(kind: "mkdir" | "rename") {
+function chooseAction(kind: "mkdir" | "create" | "rename") {
   action.value = kind;
   value.value = kind === "rename" ? selections.value[0]?.name || "" : "";
   actionError.value = "";
 }
 async function saveAction() {
-  if (saving.value || !action.value) return;
-  if (
-    !value.value.trim() ||
-    [".", ".."].includes(value.value) ||
-    /[\/\x00]/.test(value.value)
-  ) {
+  if (saving.value || !action.value || props.disabled || busy.value) return;
+  const name = value.value.trim();
+  let relativePath = name;
+  if (action.value === "mkdir") {
+    const parts = name.split("/");
+    relativePath = parts.filter(part => part && part !== ".").join("/");
+    if (!relativePath || name.startsWith("/") || name.includes("\0") || parts.includes("..")) {
+      actionError.value = "请输入当前目录下的相对路径，可用 / 分隔多级目录，不包含 ..。";
+      return;
+    }
+  } else if (!name || [".", ".."].includes(name) || /[\/\x00]/.test(name)) {
     actionError.value = "请输入有效文件名，不包含路径分隔符。";
     return;
   }
   saving.value = true;
   actionError.value = "";
   try {
-    const target = joinPath(path.value, value.value.trim());
+    const target = joinPath(path.value, relativePath);
     if (action.value === "mkdir") await mkdirFile(props.endpoint, target);
+    else if (action.value === "create") await createFile(props.endpoint, target);
     else {
       const entry = selections.value[0];
       if (!entry) throw new Error("请重新选择文件");
@@ -264,7 +353,33 @@ async function remove() {
     saving.value = false;
   }
 }
-function keydown(event: KeyboardEvent) {
+async function keydown(event: KeyboardEvent) {
+  if (event.key === "ContextMenu" || (event.shiftKey && event.key === "F10")) {
+    event.preventDefault();
+    const target = event.target as HTMLElement;
+    const bounds = target.getBoundingClientRect();
+    showMenu(new MouseEvent("contextmenu", { clientX: bounds.left + 20, clientY: bounds.top + 20 }), target);
+    return;
+  }
+  if (mode.value === "icons" && ["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Home", "End"].includes(event.key)) {
+    const element = (event.target as HTMLElement).closest<HTMLElement>("[data-file-path]");
+    if (element) {
+      event.preventDefault();
+      const index = displayed.value.findIndex(entry => entry.path === element.dataset.filePath);
+      const offset = event.key === "ArrowLeft" ? -1 : event.key === "ArrowRight" ? 1 : event.key === "ArrowUp" ? -columns.value : columns.value;
+      const next = event.key === "Home" ? 0 : event.key === "End" ? displayed.value.length - 1 : Math.max(0, Math.min(displayed.value.length - 1, index + offset));
+      const entry = displayed.value[next];
+      if (entry) {
+        if (!event.ctrlKey && !event.metaKey) select(entry, event);
+        virtualizer.value.scrollToIndex(Math.floor(next / columns.value));
+        await nextTick();
+        await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
+        await nextTick();
+        if (alive && props.visible) [...(scroll.value?.querySelectorAll<HTMLElement>("[data-file-path]") || [])].find(item => item.dataset.filePath === entry.path)?.focus();
+      }
+      return;
+    }
+  }
   if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "a") {
     event.preventDefault();
     selected.value = new Set(displayed.value.map((e) => e.path));
@@ -283,7 +398,19 @@ const date = (timestamp: number | null) =>
         minute: "2-digit",
       })
     : "—";
-onMounted(() => { if (canRefresh()) void load(props.initialPath); });
+let sizeObserver: ResizeObserver | undefined;
+onMounted(() => {
+  sizeObserver = new ResizeObserver(() => {
+    gridColumns.value = Math.max(1, Math.floor(((scroll.value?.clientWidth || 128) - 8) / 128));
+  });
+  if (scroll.value) sizeObserver.observe(scroll.value);
+  const revision = modeRevision;
+  void getPreferences().then(p => {
+    const saved = p[preferenceKey];
+    if (alive && revision === modeRevision && (saved === "list" || saved === "icons")) mode.value = saved;
+  }).catch(() => {});
+  if (canRefresh()) void load(props.initialPath);
+});
 watch(
   [() => props.visible, () => props.disabled, saving],
   () => {
@@ -293,13 +420,14 @@ watch(
 );
 onBeforeUnmount(() => {
   alive = false;
+  sizeObserver?.disconnect();
   requestID++;
   clearTimeout(refreshTimer);
   stopChanges();
 });
 </script>
 <template>
-  <section class="file-panel" :aria-label="title">
+  <section class="file-panel" :class="{ 'is-drop-target': dropActive }" :aria-label="title" @dragover="dragOver" @dragleave="dragLeave" @drop="drop">
     <div class="file-panel-title">
       <span class="file-panel-heading"
         ><AppIcon
@@ -308,7 +436,7 @@ onBeforeUnmount(() => {
         /><span>{{ title }}</span><small class="caption">{{ entries.length }} 项</small></span>
       <div v-if="$slots.actions" class="file-panel-heading-actions"><slot name="actions" /></div>
     </div>
-    <form class="file-pathbar" @submit.prevent="load(pathInput)">
+    <form class="file-pathbar" @submit.prevent="pathControl?.submit()">
       <button
         type="button"
         class="icon-button"
@@ -317,13 +445,7 @@ onBeforeUnmount(() => {
         @click="load(parentPath(path))"
       >
         <AppIcon name="up" :size="16" /></button
-      ><input
-        v-model="pathInput"
-        :aria-label="`${title}目录路径`"
-        :disabled="disabled"
-        spellcheck="false"
-        @keydown.enter.prevent="load(pathInput)"
-      /><button
+      ><FilePathBar ref="pathControl" v-model="pathInput" :path="path" :title="title" :disabled="disabled" :loading="busy" :navigation-error="error" :visible="visible" @navigate="load" @edit="closeMenu()" /><button
         class="icon-button"
         :aria-label="`${title}前往目录`"
         :disabled="disabled || busy"
@@ -347,6 +469,10 @@ onBeforeUnmount(() => {
           placeholder="搜索当前目录"
         />
       </div>
+      <div class="file-view-switch" role="group" :aria-label="`${title}展示模式`">
+        <button :aria-label="`${title}列表展示`" title="列表展示" :aria-pressed="mode === 'list'" @click="setMode('list')"><AppIcon name="list" :size="15" /></button>
+        <button :aria-label="`${title}图标展示`" title="图标展示" :aria-pressed="mode === 'icons'" @click="setMode('icons')"><AppIcon name="apps" :size="15" /></button>
+      </div>
       <label class="hidden-files"
         ><input v-model="hidden" type="checkbox" />隐藏文件</label
       ><select v-model="sort" :aria-label="`${title}排序`">
@@ -357,11 +483,12 @@ onBeforeUnmount(() => {
     </div>
     <div
       class="file-table"
-      role="table"
-      :aria-label="`${title}列表`"
-      :aria-rowcount="displayed.length + 1"
+      :role="mode === 'list' ? 'table' : 'grid'"
+      :aria-label="`${title}${mode === 'list' ? '列表' : '图标'}`"
+      :aria-rowcount="mode === 'list' ? displayed.length + 1 : Math.ceil(displayed.length / columns)"
+      :aria-colcount="mode === 'icons' ? columns : undefined"
     >
-      <div class="file-table-header" role="row">
+      <div v-if="mode === 'list'" class="file-table-header" role="row">
         <span role="columnheader">名称</span
         ><span role="columnheader">大小</span
         ><span role="columnheader" class="file-modified">修改时间</span>
@@ -372,6 +499,7 @@ onBeforeUnmount(() => {
         role="rowgroup"
         tabindex="0"
         @keydown="keydown"
+        @contextmenu.prevent="showMenu"
       >
         <div v-if="busy && !entries.length" class="file-loading" role="status">
           正在读取目录…
@@ -386,51 +514,34 @@ onBeforeUnmount(() => {
           }}
         </div>
         <div :style="{ height: totalHeight + 'px', position: 'relative' }">
-          <div
-            v-for="row in virtualRows"
-            :key="String(row.key)"
-            class="file-row"
-            role="row"
-            :aria-label="displayed[row.index]!.name"
-            :aria-selected="selected.has(displayed[row.index]!.path)"
-            :aria-rowindex="row.index + 2"
-            :class="{ selected: selected.has(displayed[row.index]!.path) }"
-            :style="{ transform: `translateY(${row.start}px)` }"
-            tabindex="0"
-            @click="select(displayed[row.index]!, $event)"
-            @dblclick="open(displayed[row.index]!)"
-            @keydown.enter.prevent="open(displayed[row.index]!)"
-            @keydown.space.prevent="select(displayed[row.index]!, $event)"
-          >
-            <span
-              class="file-name"
-              role="cell"
-              :title="displayed[row.index]!.name"
-              ><AppIcon
-                :name="
-                  displayed[row.index]!.kind === 'directory'
-                    ? 'folder'
-                    : displayed[row.index]!.kind === 'symlink'
-                      ? 'link'
-                      : 'file'
-                "
-                :size="17"
-                :class="{
-                  'folder-icon': displayed[row.index]!.kind === 'directory',
-                }"
-              /><span>{{ displayed[row.index]!.name }}</span></span
-            ><span role="cell" class="file-size">{{
-              displayed[row.index]!.kind === "directory"
-                ? "—"
-                : formatBytes(displayed[row.index]!.size)
-            }}</span
-            ><span role="cell" class="file-modified">{{
-              date(displayed[row.index]!.modified)
-            }}</span>
+          <div v-for="row in virtualRows" :key="String(row.key)" class="file-virtual-row" :class="{ 'file-icon-row': mode === 'icons' }"
+            :role="mode === 'icons' ? 'row' : 'presentation'" :aria-rowindex="mode === 'icons' ? row.index + 1 : undefined"
+            :style="{ transform: `translateY(${row.start}px)`, height: row.size + 'px', gridTemplateColumns: mode === 'icons' ? `repeat(${columns}, minmax(0, 1fr))` : undefined }">
+            <div v-for="{ entry, index } in rowEntries(row.index)" :key="entry.path" class="file-item"
+              :class="{ 'file-row': mode === 'list', 'file-icon-item': mode === 'icons', selected: selected.has(entry.path) }"
+              :role="mode === 'list' ? 'row' : 'gridcell'" :aria-label="entry.name" :aria-selected="selected.has(entry.path)"
+              :aria-rowindex="mode === 'list' ? index + 2 : undefined" :aria-colindex="mode === 'icons' ? index % columns + 1 : undefined"
+              :data-file-path="entry.path" tabindex="0" :draggable="!disabled && !transferDisabled && !busy && !saving && ['file', 'directory'].includes(entry.kind)"
+              @click="select(entry, $event)" @dblclick="open(entry)" @keydown.enter.prevent="open(entry)" @keydown.space.prevent="select(entry, $event)"
+              @dragstart="dragStart(entry, $event)" @dragend="emit('dragEnd')">
+              <span class="file-name" :role="mode === 'list' ? 'cell' : undefined" :title="entry.name">
+                <AppIcon :name="entry.kind === 'directory' ? 'folder' : entry.kind === 'symlink' ? 'link' : 'file'" :size="mode === 'icons' ? 36 : 17" :class="{ 'folder-icon': entry.kind === 'directory' }" />
+                <span>{{ entry.name }}</span><small class="file-parent-path" :title="`上级目录：${parentPath(entry.path)}`">{{ parentPath(entry.path) }}</small>
+              </span>
+              <span v-if="mode === 'list'" role="cell" class="file-size">{{ entry.kind === 'directory' ? '—' : formatBytes(entry.size) }}</span>
+              <span v-if="mode === 'list'" role="cell" class="file-modified">{{ date(entry.modified) }}</span>
+            </div>
           </div>
         </div>
       </div>
     </div>
+    <Transition name="file-drop">
+      <div v-if="dropActive" class="file-drop-overlay" aria-hidden="true"><AppIcon :name="endpoint.kind === 'remote' ? 'upload' : 'download'" :size="26" /><strong>{{ endpoint.kind === 'remote' ? '松开上传到当前目录' : '松开下载到当前目录' }}</strong><span>{{ path }}</span></div>
+    </Transition>
+    <FileContextMenu v-if="menu" :x="menu.x" :y="menu.y" :title="title" :path="path" :mode="mode" :transfer-action="transferAction"
+      :can-mutate="!disabled && !busy && !saving" :can-rename="!disabled && !busy && !saving && selections.length === 1"
+      :can-delete="!disabled && !busy && !saving && selections.length > 0" :can-transfer="!disabled && !transferDisabled && selections.length > 0"
+      @action="contextAction" @close="closeMenu" />
     <div v-if="error" class="file-error" role="alert">{{ error }}</div>
     <div class="file-actions">
       <a-button
@@ -470,21 +581,22 @@ onBeforeUnmount(() => {
     </div>
     <BaseModal
       v-if="action"
-      :title="action === 'mkdir' ? '新建目录' : '重命名文件'"
+      :title="action === 'mkdir' ? '新建目录' : action === 'create' ? '新建文件' : '重命名文件'"
       :width="420"
       :busy="saving"
       @close="action = null"
       ><form class="form-stack" @submit.prevent="saveAction">
         <label class="form-field"
-          >{{ action === "mkdir" ? "目录名称" : "新名称"
-          }}<input v-model="value" required autofocus
+          >{{ action === "mkdir" ? "目录名称" : action === "create" ? "文件名称" : "新名称"
+          }}<input v-model="value" required autofocus :placeholder="action === 'mkdir' ? '例如 data/yiqiban/config' : undefined"
         /></label>
+        <p v-if="action === 'mkdir'" class="form-note">支持用 / 创建多级目录，缺少的父目录会自动创建。</p>
         <p v-if="actionError" class="inline-error" role="alert">
           {{ actionError }}
         </p>
         <div class="modal-actions">
           <a-button :disabled="saving" @click="action = null">取消</a-button
-          ><a-button type="primary" html-type="submit" :loading="saving"
+          ><a-button type="primary" html-type="submit" :loading="saving" :disabled="disabled || busy"
             >确认</a-button
           >
         </div>
@@ -492,3 +604,28 @@ onBeforeUnmount(() => {
     >
   </section>
 </template>
+
+<style scoped>
+.file-panel { position: relative; transition: box-shadow 120ms ease-out; }
+.file-tools { flex-wrap: wrap; }
+.file-view-switch { display: flex; flex-shrink: 0; gap: 2px; }
+.file-view-switch button { --icon-color: currentColor; display: grid; place-items: center; width: 24px; height: 24px; border-radius: 4px; color: var(--muted); }
+.file-view-switch button:hover { background: var(--hover); color: var(--ink); }
+.file-view-switch button[aria-pressed="true"] { color: var(--accent); background: var(--accent-soft); }
+.file-virtual-row { position: absolute; top: 0; left: 0; width: 100%; }
+.file-icon-row { display: grid; gap: 8px; padding: 6px 8px; }
+.file-icon-item { min-width: 0; border: 1px solid transparent; border-radius: 6px; padding: 7px 5px; user-select: none; }
+.file-icon-item:hover { background: var(--hover); }
+.file-icon-item.selected { background: var(--accent-soft); border-color: var(--accent-line); }
+.file-icon-item .file-name { flex-direction: column; gap: 4px; width: 100%; height: 100%; }
+.file-icon-item .file-name > span { flex: none; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; max-height: 32px; line-height: 16px; white-space: normal; overflow-wrap: anywhere; text-align: center; width: 100%; }
+.file-icon-item .file-parent-path { flex: none; max-width: 100%; font-size: 9px; }
+.file-drop-overlay { position: absolute; inset: 85px 10px 46px; z-index: 20; pointer-events: none; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; padding: 20px; border: 2px dashed var(--accent); border-radius: 8px; background: var(--surface); opacity: .96; color: var(--accent); }
+.file-drop-overlay strong { font-size: 13px; font-weight: 500; }
+.file-drop-overlay span { font-size: 11px; color: var(--muted); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.is-drop-target { box-shadow: inset 0 0 0 2px var(--accent); }
+.file-drop-enter-active, .file-drop-leave-active { transition: opacity 120ms ease-out; }
+.file-drop-enter-active .app-icon { transition: transform 160ms ease-out; }
+.file-drop-enter-from, .file-drop-leave-to { opacity: 0; }
+.file-drop-enter-from .app-icon { transform: translateY(4px); }
+</style>
