@@ -1,21 +1,11 @@
 <script setup lang="ts">
-import {
-  computed,
-  defineAsyncComponent,
-  onBeforeUnmount,
-  onMounted,
-  ref,
-  watch,
-} from "vue";
+import { nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { useWorkspace } from "../../composables/workspace";
 import type { HostConfig } from "../../lib/types";
 import { desktopAvailable } from "../../lib/api";
 import AppIcon from "../../components/AppIcon.vue";
 import ServerAvatar from "../../components/ServerAvatar.vue";
 
-const HostDetailsDrawer = defineAsyncComponent(
-  () => import("./HostDetailsDrawer.vue"),
-);
 const w = useWorkspace();
 const {
   hosts,
@@ -23,24 +13,29 @@ const {
   group,
   groups,
   search,
-  selectedHost,
   editor,
   attempts,
   sessions,
   loading,
 } = w;
-const detailsOpen = ref(false);
-const selected = computed(() =>
-  hosts.value.find((h) => h.id === selectedHost.value),
-);
 const connected = (id: string) =>
   sessions.value.some((s) => s.hostId === id && !s.closed);
-const menu = ref<{ host: HostConfig; x: number; y: number } | null>(null);
+const menu = ref<{ host: HostConfig | null; x: number; y: number } | null>(null);
+const menuRoot = ref<HTMLElement>();
 let menuAnchor: HTMLElement | null = null;
-function showDetails(h: HostConfig) {
-  selectedHost.value = h.id;
+const duplicating = ref(new Set<string>());
+async function duplicateHost(h: HostConfig) {
+  if (duplicating.value.has(h.id)) return;
+  duplicating.value.add(h.id);
+  try {
+    await w.duplicate(h);
+  } finally {
+    duplicating.value.delete(h.id);
+  }
+}
+function editHost(h: HostConfig) {
   menu.value = null;
-  detailsOpen.value = true;
+  w.openHostSettings(h);
 }
 function openTerminal(h: HostConfig, event?: MouseEvent) {
   if (event?.target instanceof Element && event.target.closest("button")) return;
@@ -51,6 +46,11 @@ function openTerminal(h: HostConfig, event?: MouseEvent) {
 }
 function cardKey(h: HostConfig, event: KeyboardEvent) {
   if (event.target !== event.currentTarget) return;
+  if (event.key === " ") {
+    event.preventDefault();
+    menu.value = null;
+    return;
+  }
   if (event.key === "Enter") {
     event.preventDefault();
     if (!event.repeat) openTerminal(h);
@@ -71,39 +71,66 @@ function cardKey(h: HostConfig, event: KeyboardEvent) {
   }
 }
 function showMenu(
-  h: HostConfig,
+  h: HostConfig | null,
   event: MouseEvent,
   anchor = event.currentTarget as HTMLElement | null,
 ) {
   menuAnchor = anchor;
-  selectedHost.value = h.id;
   menu.value = {
     host: h,
     x: Math.max(8, Math.min(event.clientX, window.innerWidth - 188)),
     y: Math.max(8, Math.min(event.clientY, window.innerHeight - 153)),
   };
+  void nextTick(() => menuRoot.value?.querySelector<HTMLButtonElement>("button:not(:disabled)")?.focus({ preventScroll: true }));
 }
-function outside(e: PointerEvent) {
+function pageMenu(event: MouseEvent) {
+  if ((event.target as Element).closest("input,select,textarea,button,a,[contenteditable='true']")) {
+    menu.value = null;
+    return;
+  }
+  event.preventDefault();
+  showMenu(null, event);
+}
+function pageKey(event: KeyboardEvent) {
+  if (event.target !== event.currentTarget) return;
+  if (event.key !== "ContextMenu" && !(event.shiftKey && event.key === "F10")) return;
+  event.preventDefault();
+  const element = event.currentTarget as HTMLElement;
+  const rect = element.getBoundingClientRect();
+  showMenu(null, new MouseEvent("contextmenu", { clientX: rect.left + 28, clientY: rect.top + 28 }), element);
+}
+function menuKey(event: KeyboardEvent) {
+  if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) return;
+  event.preventDefault();
+  const items = [...(menuRoot.value?.querySelectorAll<HTMLButtonElement>("button:not(:disabled)") || [])];
+  const index = items.indexOf(document.activeElement as HTMLButtonElement);
+  const next = event.key === "Home" ? 0 : event.key === "End" ? items.length - 1
+    : (index + (event.key === "ArrowDown" ? 1 : items.length - 1)) % items.length;
+  items[next]?.focus();
+}
+function outside(e: Event) {
   if (!(e.target as HTMLElement).closest(".context-menu")) menu.value = null;
 }
 function escape(e: KeyboardEvent) {
   if (e.key === "Escape" && menu.value) {
+    e.preventDefault();
     menu.value = null;
     menuAnchor?.focus();
   }
 }
 onMounted(() => {
   window.addEventListener("pointerdown", outside);
+  window.addEventListener("focusin", outside);
   window.addEventListener("keydown", escape);
 });
 onBeforeUnmount(() => {
   window.removeEventListener("pointerdown", outside);
+  window.removeEventListener("focusin", outside);
   window.removeEventListener("keydown", escape);
 });
 watch(
   () => w.view.value,
   () => {
-    detailsOpen.value = false;
     menu.value = null;
   },
 );
@@ -111,21 +138,22 @@ function action(kind: "edit" | "duplicate" | "delete") {
   const h = menu.value?.host;
   menu.value = null;
   if (!h) return;
-  if (kind === "edit") editor.value = h;
-  else if (kind === "duplicate") void w.duplicate(h);
+  if (kind === "edit") w.openHostSettings(h);
+  else if (kind === "duplicate") void duplicateHost(h);
   else void w.removeHost(h).catch(w.fail);
 }
-function connectFromDetails(host: HostConfig) {
-  detailsOpen.value = false;
-  openTerminal(host);
-}
-function editFromDetails(host: HostConfig) {
-  detailsOpen.value = false;
-  editor.value = host;
+function pageAction(kind: "new" | "refresh" | "clear") {
+  menu.value = null;
+  if (kind === "new" && desktopAvailable) editor.value = "new";
+  else if (kind === "refresh") void w.reloadHosts().catch(w.fail);
+  else if (kind === "clear") {
+    search.value = "";
+    group.value = null;
+  }
 }
 </script>
 <template>
-  <section class="hosts-page" aria-label="服务器">
+  <section class="hosts-page" aria-label="服务器" tabindex="-1" @contextmenu="pageMenu" @keydown="pageKey">
     <div v-if="!desktopAvailable" class="preview-note">
       <AppIcon name="info" :size="16" />当前为页面预览。启动 ssh-go
       桌面应用后即可管理服务器与连接 SSH。
@@ -202,14 +230,13 @@ function editFromDetails(host: HostConfig) {
           v-for="h in filtered"
           :key="h.id"
           class="host-card"
-          :class="{ selected: (detailsOpen || menu) && selectedHost === h.id }"
           role="group"
           :aria-label="`服务器 ${h.name}`"
-          aria-description="双击或按 Enter 打开终端"
+          aria-description="双击或按 Enter 打开终端，悬浮按钮或右键管理连接"
           tabindex="0"
           @dblclick="openTerminal(h, $event)"
           @keydown="cardKey(h, $event)"
-          @contextmenu.prevent="showMenu(h, $event)"
+          @contextmenu.stop.prevent="showMenu(h, $event)"
         >
           <ServerAvatar :system="h.remoteSystem">
             <i
@@ -221,59 +248,46 @@ function editFromDetails(host: HostConfig) {
           </ServerAvatar>
           <div class="host-card-identity">
             <h2 :title="h.name">{{ h.name }}</h2>
-            <p :title="[h.remoteSystem?.name, h.remoteSystem?.version, h.group].filter(Boolean).join(' · ')">
-              SSH · {{ h.username }}
-            </p>
             <div class="host-card-address" :title="`${h.address}:${h.port}`">
               {{ h.address }}<span>:{{ h.port }}</span>
             </div>
           </div>
-          <div class="host-card-actions" @dblclick.stop>
+          <div class="host-card-quick-actions" @click.stop @dblclick.stop>
+            <button type="button" class="icon-button host-card-quick-action" :aria-label="`编辑连接 ${h.name}`" title="编辑连接" @click="editHost(h)">
+              <AppIcon name="edit" :size="14" />
+            </button>
+            <button type="button" class="icon-button host-card-quick-action" :aria-label="`复制连接 ${h.name}`" title="复制连接"
+              :disabled="duplicating.has(h.id)" :aria-busy="duplicating.has(h.id)" @click="duplicateHost(h)">
+              <AppIcon name="copy" :size="14" />
+            </button>
+          </div>
+          <div v-if="attempts.has(h.id)" class="host-card-actions" @dblclick.stop>
             <a-button
-              type="text"
-              class="host-card-more"
-              :aria-label="`更多操作 ${h.name}`"
-              @click.stop="showMenu(h, $event)"
-              ><AppIcon name="more" :size="18"
-            /></a-button>
-            <a-button
-              v-if="attempts.has(h.id)"
               class="host-card-cancel"
               size="small"
               :aria-label="`取消连接 ${h.name}`"
               @click.stop="w.cancelConnection(h.id)"
               >取消连接</a-button
             >
-            <a-button
-              type="text"
-              size="small"
-              aria-haspopup="dialog"
-              :aria-label="`查看详情 ${h.name}`"
-              @click.stop="showDetails(h)"
-              >查看详情<AppIcon name="right" :size="12" /></a-button
-            >
           </div>
         </article>
       </div>
     </div>
     <div v-if="filtered.length" class="hosts-footnote">
-      共 {{ filtered.length }} 台服务器<span>双击卡片打开终端 · 查看详情 · 右键管理</span>
+      共 {{ filtered.length }} 台服务器<span>悬浮编辑或复制 · 双击打开终端 · 右键管理</span>
     </div>
   </section>
-  <HostDetailsDrawer
-    v-if="detailsOpen && selected"
-    :host="selected"
-    @close="detailsOpen = false"
-    @connect="connectFromDetails(selected)"
-    @edit="editFromDetails(selected)"
-  />
   <Teleport to="body">
     <div
       v-if="menu"
+      ref="menuRoot"
       class="context-menu"
       role="menu"
+      :aria-label="menu.host ? '服务器操作' : '服务器列表操作'"
       :style="{ left: menu.x + 'px', top: menu.y + 'px' }"
+      @keydown="menuKey"
     >
+      <template v-if="menu.host">
       <button role="menuitem" @click="action('edit')">
         <AppIcon name="edit" :size="16" />编辑连接
       </button>
@@ -284,6 +298,19 @@ function editFromDetails(host: HostConfig) {
       <button role="menuitem" class="danger" @click="action('delete')">
         <AppIcon name="delete" :size="16" />删除服务器
       </button>
+      </template>
+      <template v-else>
+        <button role="menuitem" :disabled="!desktopAvailable" @click="pageAction('new')">
+          <AppIcon name="plus" :size="16" />添加服务器
+        </button>
+        <button role="menuitem" :disabled="loading" @click="pageAction('refresh')">
+          <AppIcon name="refresh" :size="16" />刷新服务器列表
+        </button>
+        <div class="menu-divider"></div>
+        <button role="menuitem" :disabled="group === null && !search" @click="pageAction('clear')">
+          <AppIcon name="close" :size="16" />清除筛选
+        </button>
+      </template>
     </div>
   </Teleport>
 </template>

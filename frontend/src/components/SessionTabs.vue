@@ -1,20 +1,22 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
-import { useWorkspace, type SessionView } from "../composables/workspace";
+import { hostSettingsView, useWorkspace, type SessionView } from "../composables/workspace";
 import AppIcon from "./AppIcon.vue";
 
 const w = useWorkspace();
-const { sessions, hosts, view, closing, settingsOpened } = w;
+const { sessions, hosts, view, closing, settingsOpened, hostSettings } = w;
 const root = ref<HTMLElement>();
 const list = ref<HTMLElement>();
 const overflow = ref(false), atStart = ref(true), atEnd = ref(true);
 const tabIds = computed(() => [
   ...sessions.value.map(s => s.id),
+  ...hostSettings.value.map(h => hostSettingsView(h.id)),
   ...(settingsOpened.value ? ["settings"] : []),
 ]);
 const focusId = computed(() => tabIds.value.includes(view.value) ? view.value : tabIds.value[0]);
 function tabElement(id: string) {
-  return document.getElementById(id === "settings" ? "settings-tab" : `session-tab-${id}`);
+  return document.getElementById(id === "settings" ? "settings-tab"
+    : id.startsWith("host-settings:") ? `host-settings-tab-${id.slice("host-settings:".length)}` : `session-tab-${id}`);
 }
 function address(s: SessionView) {
   const host = hosts.value.find(h => h.id === s.hostId);
@@ -39,6 +41,7 @@ async function keydown(event: KeyboardEvent, id: string) {
   if (event.key === "Delete") {
     event.preventDefault();
     if (id === "settings") await closeSettings();
+    else if (id.startsWith("host-settings:")) await closeHostSettings(id.slice("host-settings:".length));
     else {
       const session = sessions.value.find(s => s.id === id);
       if (session) await closeSession(session);
@@ -86,6 +89,16 @@ async function closeSettings() {
   if (target) tabElement(target)?.focus();
   else document.querySelector<HTMLButtonElement>(".application-brand")?.focus();
 }
+async function closeHostSettings(hostId: string) {
+  const restoreFocus = !!root.value?.contains(document.activeElement);
+  w.closeHostSettings(hostId);
+  await nextTick();
+  await nextTick();
+  if (!restoreFocus) return;
+  const target = tabIds.value.includes(view.value) ? view.value : tabIds.value[0];
+  if (target) tabElement(target)?.focus();
+  else document.querySelector<HTMLButtonElement>(".application-brand")?.focus();
+}
 function scroll(direction: number) {
   list.value?.scrollBy({ left: direction * Math.max(140, list.value.clientWidth * .75), behavior: "auto" });
 }
@@ -108,6 +121,15 @@ watch(overflow, async () => { await nextTick(); measure(); });
           <i class="connection-dot" :class="{ online: !s.closed }"></i><span>{{ s.hostName }}</span>
         </button>
         <button class="connection-tab-close" :aria-label="`${s.closed ? '移除' : '关闭连接'} ${s.hostName}`" :title="s.closed ? '移除会话' : '关闭连接'" :aria-busy="closing.has(s.id)" @click="closeSession(s)"><AppIcon name="close" :size="12" /></button>
+      </div>
+      <div v-for="host in hostSettings" :key="hostSettingsView(host.id)" class="connection-tab host-settings-tab" :class="{ active: view === hostSettingsView(host.id) }" role="presentation">
+        <button :id="`host-settings-tab-${host.id}`" class="connection-tab-select" role="tab" :aria-label="`${host.name} · 连接设置`"
+          :aria-selected="view === hostSettingsView(host.id)" :aria-controls="`host-settings-panel-${host.id}`"
+          :tabindex="focusId === hostSettingsView(host.id) ? 0 : -1" :title="`${host.name} · 连接设置`"
+          @click="choose(hostSettingsView(host.id))" @keydown="keydown($event, hostSettingsView(host.id))">
+          <AppIcon name="edit" :size="14" /><span>{{ host.name }} · 连接设置</span>
+        </button>
+        <button class="connection-tab-close" :aria-label="`关闭 ${host.name} · 连接设置`" title="关闭连接设置" @click="closeHostSettings(host.id)"><AppIcon name="close" :size="12" /></button>
       </div>
       <div v-if="settingsOpened" class="connection-tab" :class="{ active: view === 'settings' }" role="presentation">
         <button id="settings-tab" class="connection-tab-select" role="tab" aria-label="设置" :aria-selected="view === 'settings'" aria-controls="settings-panel" :tabindex="focusId === 'settings' ? 0 : -1" title="设置" @click="choose('settings')" @keydown="keydown($event, 'settings')">

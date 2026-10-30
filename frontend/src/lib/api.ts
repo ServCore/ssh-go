@@ -58,6 +58,8 @@ function call<T>(command: string, args?: Record<string, unknown>): Promise<T> {
   return window.go!.main.App.Call(command, args ?? {}) as Promise<T>;
 }
 export const listHosts = () => call<HostConfig[]>("list_hosts");
+export const getHostPassword = (id: string) =>
+  call<string>("get_host_password", { id });
 export const saveHost = (host: HostConfig, password?: string) =>
   call<HostConfig>("save_host", { host, password: password ?? null });
 export const deleteHost = (id: string) => call<void>("delete_host", { id });
@@ -252,6 +254,7 @@ export const getResourceSnapshot = () =>
   call<ResourceSnapshot>("get_resource_snapshot");
 export const getPreferences = () =>
   call<Record<string, unknown>>("get_preferences");
+export const listSystemFonts = () => call<string[]>("list_system_fonts");
 export const setPreference = (key: string, value: unknown) =>
   call<void>("set_preference", { key, value });
 export async function chooseLocalFiles(): Promise<string[]> {

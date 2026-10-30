@@ -103,6 +103,15 @@ func (e *Engine) Call(command string, a Arguments) (any, error) {
 	switch command {
 	case "list_hosts":
 		return e.Store.Hosts(), nil
+	case "get_host_password":
+		host, err := e.Store.Host(a.ID)
+		if err != nil {
+			return nil, err
+		}
+		if !host.RememberPassword {
+			return "", nil
+		}
+		return e.Store.Password(host)
 	case "save_host":
 		return e.Store.SaveHost(a.Host, a.Password)
 	case "delete_host":
@@ -121,6 +130,8 @@ func (e *Engine) Call(command string, a Arguments) (any, error) {
 		return nil, e.Store.Export(a.Path)
 	case "get_preferences":
 		return e.Store.Preferences(), nil
+	case "list_system_fonts":
+		return ListSystemFonts(e.ctx)
 	case "set_preference":
 		return nil, e.Store.SetPreference(a.Key, a.Value)
 	case "get_data_directory":

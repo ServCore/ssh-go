@@ -8,11 +8,13 @@ test("duplicate produces an independent host and preserves the source while edit
   await source.click({ button: "right" });
   await page.screenshot({ path: ".test-artifacts/duplicate-connection-menu.png", animations: "disabled" });
   await page.getByRole("menuitem", { name: "复制连接", exact: true }).click();
-  const dialog = page.getByRole("dialog");
+  const dialog = page.getByRole("tabpanel", { name: "测试服务器（副本） · 连接设置", exact: true });
   await expect(dialog).toBeVisible();
   await dialog.getByLabel("服务器名称").fill("复制后修改");
   await dialog.getByLabel("主机地址").fill("new.example.com");
   await dialog.getByRole("button", { name: "保存服务器", exact: true }).click();
+  await expect(page.getByRole("tab", { name: "复制后修改 · 连接设置", exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "返回服务器", exact: true }).click();
   await expect(source).toBeVisible();
   await expect(page.getByRole("group", { name: "服务器 复制后修改", exact: true })).toBeVisible();
   const hosts = await page.evaluate(() => JSON.parse(localStorage.getItem("qa-hosts")!));

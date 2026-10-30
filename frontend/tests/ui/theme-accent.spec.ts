@@ -85,8 +85,21 @@ test("accent changes update live terminals without changing ANSI output, and fai
     (window as any).__qa.originalTerminal = document.querySelector(".xterm");
   });
   await expect(page.locator(".xterm-rows")).toContainText("SUCCESS");
-  const ansiColor = () => page.locator(".xterm-rows span").filter({ hasText: "SUCCESS" }).evaluate(el => getComputedStyle(el).color);
+  const ansiColor = () => page.locator(".xterm-rows").evaluate(root => {
+    const row = [...root.children].find(element => element.textContent?.includes("SUCCESS"));
+    if (!row) return "";
+    const start = row.textContent!.indexOf("SUCCESS");
+    let offset = 0;
+    const colors = new Set<string>();
+    for (const span of row.querySelectorAll("span")) {
+      const end = offset + (span.textContent || "").length;
+      if (end > start && offset < start + 7) colors.add(getComputedStyle(span).color);
+      offset = end;
+    }
+    return colors.size === 1 ? [...colors][0] : "";
+  });
   const before = await ansiColor();
+  expect(before).not.toBe("");
   await setAccent(page, "red");
   await page.getByLabel("主题色", { exact: true }).selectOption("green");
   await page.getByLabel("主题色", { exact: true }).selectOption("purple");

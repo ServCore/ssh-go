@@ -6,6 +6,7 @@ import { errorMessage } from "../../lib/format";
 import { useWorkspace } from "../../composables/workspace";
 import AppIcon from "../../components/AppIcon.vue";
 import BaseModal from "../../components/BaseModal.vue";
+import TerminalFontSettings from "../terminal/TerminalFontSettings.vue";
 import { appearanceMode, setAppearance, accentColor, setAccentColor, accentOptions, type AccentColor, type AppearanceMode } from "../../composables/appearance";
 const w = useWorkspace(),
   directory = ref(""),
@@ -161,8 +162,18 @@ async function forgetNow() {
     <div class="settings-section">
       <div class="settings-section-heading">
         <span class="settings-section-icon"
-          ><AppIcon name="safe" :size="19"
+          ><AppIcon name="terminal" :size="19"
         /></span>
+        <div>
+          <h2>终端</h2>
+          <p>字体与字号</p>
+        </div>
+      </div>
+      <TerminalFontSettings />
+    </div>
+    <div class="settings-section">
+      <div class="settings-section-heading">
+        <span class="settings-section-icon"><AppIcon name="safe" :size="19" /></span>
         <div>
           <h2>连接与安全</h2>
           <p>认证与服务器身份</p>

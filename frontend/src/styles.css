@@ -348,6 +348,8 @@ i.online {
   white-space: nowrap;
 }
 .hosts-page {
+  flex: 1;
+  min-width: 0;
   height: 100%;
   display: flex;
   flex-direction: column;
@@ -461,10 +463,11 @@ i.online {
   padding: 1px 3px;
 }
 .host-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(min(100%, 280px), 1fr));
+  display: flex;
+  flex-wrap: wrap;
+  align-content: flex-start;
   align-items: stretch;
-  gap: 14px;
+  gap: 12px;
 }
 .hosts-list {
   flex: 1;
@@ -474,13 +477,16 @@ i.online {
   margin: -4px;
 }
 .host-card {
-  display: grid;
-  grid-template-columns: 44px minmax(0, 1fr) 72px;
+  position: relative;
+  display: flex;
+  flex: 0 1 auto;
+  width: max-content;
+  max-width: min(100%, 320px);
   align-items: center;
   gap: 12px;
-  min-width: 0;
-  min-height: 116px;
-  padding: 18px;
+  min-width: min(100%, 240px);
+  min-height: 96px;
+  padding: 12px 18px;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: var(--surface);
@@ -489,10 +495,6 @@ i.online {
   transition: background 150ms, border-color 150ms;
 }
 .host-card:hover { background: var(--surface); border-color: var(--accent-line); }
-.host-card.selected {
-  background: var(--accent-soft);
-  border-color: var(--accent-line);
-}
 .host-card:focus-visible { outline-offset: 3px; }
 .server-avatar {
   position: relative;
@@ -524,43 +526,29 @@ i.online {
 }
 .host-state.online { background: var(--green); }
 .host-state.pending { background: var(--warning); }
-.host-card-actions {
+.host-card-actions { display: flex; align-items: center; }
+.host-card-quick-actions {
+  position: absolute;
+  top: 4px;
+  right: 8px;
   display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  justify-content: space-between;
-  height: 72px;
+  gap: 2px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 120ms;
 }
-.host-card-more.arco-btn {
-  width: 25px;
-  height: 24px;
-  padding: 0;
-  color: var(--muted);
-  border-radius: 6px;
-}
-.host-card-cancel.arco-btn { height: 20px; padding: 0 4px; font-size: 10px; }
-.host-card-actions > .arco-btn:last-child {
-  padding: 0 6px;
-  height: 25px;
-  font-size: 11px;
-  color: var(--accent);
-  gap: 1px;
-}
-.host-card-identity { min-width: 0; }
+.host-card:hover .host-card-quick-actions,
+.host-card:focus-within .host-card-quick-actions { opacity: 1; pointer-events: auto; }
+.host-card-quick-action.icon-button { width: 24px; height: 24px; flex-basis: 24px; }
+.host-card-quick-action:hover { color: var(--accent); background: var(--accent-soft); }
+@media (hover: none) { .host-card-quick-actions { opacity: 1; pointer-events: auto; } }
+.host-card-cancel.arco-btn { height: 24px; padding: 0 6px; font-size: 11px; }
+.host-card-identity { min-width: 0; padding-top: 8px; }
 .host-card-identity h2 {
   color: var(--ink);
   font-size: 14px;
   line-height: 21px;
   font-weight: 600;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.host-card-identity p {
-  margin-top: 3px;
-  color: var(--subtle);
-  font-size: 11px;
-  line-height: 17px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -612,6 +600,7 @@ i.online {
   background: var(--surface);
 }
 .host-card-skeleton {
+  flex: 0 1 220px;
   height: 112px;
   padding: 16px;
   border: 1px solid var(--line);
@@ -634,84 +623,23 @@ i.online {
 .host-card-skeleton span:last-child {
   width: 90%;
 }
-.host-details-drawer .arco-drawer {
-  border-left: 1px solid var(--line);
-  box-shadow: var(--panel-shadow);
-}
-.host-details-drawer .arco-drawer-header {
-  height: 65px;
-  padding: 0 24px;
-  border-bottom-color: var(--line);
-}
-.host-drawer-heading {
+.host-settings-page {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  width: 100%;
-  font-size: 15px;
-  font-weight: 600;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+  padding: 18px 28px;
+  background: var(--workspace);
 }
-.host-details-drawer .arco-drawer-body {
-  padding: 28px 24px;
-}
-.host-details-drawer .arco-drawer-footer {
-  padding: 18px 24px;
-  border-top-color: var(--line);
-}
-.host-drawer-identity {
-  padding-bottom: 26px;
-  border-bottom: 1px solid var(--line);
-}
-.host-drawer-identity h2 {
-  margin: 18px 0 10px;
-  font-size: 21px;
-  line-height: 1.5;
-  font-weight: 600;
-  overflow-wrap: anywhere;
-}
-.host-details-fields {
-  display: grid;
-  grid-template-columns: 80px minmax(0, 1fr);
-  gap: 24px 20px;
-  margin: 28px 0;
-  font-size: 13px;
-  line-height: 1.7;
-}
-.host-details-fields dt {
-  color: var(--muted);
-}
-.host-details-fields dd {
-  margin: 0;
-  color: var(--ink);
-  overflow-wrap: anywhere;
-}
-.host-details-address {
-  font-family: Menlo, Monaco, monospace;
-  font-size: 12px;
-}
-.host-drawer-note {
-  display: flex;
-  align-items: flex-start;
-  gap: 9px;
-  color: var(--muted);
-  font-size: 12px;
-  line-height: 1.9;
-  padding: 24px 0 0;
-  margin: 0;
-  border-top: 1px solid var(--line);
-}
-.host-drawer-note > .arco-icon {
-  margin-top: 3px;
-  flex-shrink: 0;
-}
-.host-drawer-actions {
-  display: flex;
-  gap: 12px;
-}
-.host-drawer-actions > .arco-btn {
-  flex: 1;
-  height: 36px;
-}
+.host-settings-content { display: flex; flex-direction: column; width: 100%; max-width: 600px; height: 100%; min-height: 0; margin: 0 auto; }
+.host-settings-heading { flex-shrink: 0; margin-bottom: 16px; }
+.host-settings-heading h1 { font-size: 20px; line-height: 1.4; font-weight: 600; overflow-wrap: anywhere; }
+.host-settings-heading p { margin-top: 4px; font-size: 12px; color: var(--muted); line-height: 1.6; }
+.host-settings-content .host-editor { flex: 1; min-height: 0; gap: 0; }
+.host-settings-content .host-editor-fields { flex: 1; overflow: auto; gap: 9px; padding: 0 2px 12px 0; }
+.host-settings-content .form-field { gap: 4px; }
+.host-settings-content .modal-actions { flex-shrink: 0; margin-top: 0; padding-top: 12px; }
+@media (max-width: 780px) { .host-settings-page { padding: 16px 18px; } }
 .empty-state {
   min-height: 340px;
   display: flex;
@@ -788,9 +716,10 @@ i.online {
   font-size: 12px;
   border-radius: 4px;
 }
-.context-menu button:hover {
+.context-menu button:hover:not(:disabled) {
   background: var(--raised);
 }
+.context-menu button:disabled { opacity: 0.45; }
 .menu-divider {
   height: 1px;
   background: var(--line);
@@ -805,6 +734,12 @@ i.online {
 .form-stack {
   display: flex;
   flex-direction: column;
+  gap: 15px;
+}
+.host-editor-fields {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
   gap: 15px;
 }
 .form-field {
@@ -837,7 +772,8 @@ i.online {
   line-height: 1.9;
   overflow-wrap: anywhere;
 }
-.form-stack > .form-note {
+.form-stack > .form-note,
+.host-editor-fields > .form-note {
   margin-top: -8px;
 }
 .password-field {
@@ -1997,6 +1933,7 @@ i.online {
 .hosts-workspace {
   height: 100%;
   min-height: 0;
+  overflow: hidden;
 }
 
 /* Shared component sizing. */
@@ -2105,8 +2042,12 @@ i.online {
 :root:not([data-theme="dark"]) .topbar { background: #fff; }
 :root:not([data-theme="dark"]) .host-card { border-color: #e5e6eb; transition: background 150ms, border-color 150ms, box-shadow 150ms; }
 :root:not([data-theme="dark"]) .host-card:hover { background: #fff; border-color: var(--accent-line); box-shadow: 0 3px 12px rgba(31, 35, 41, .04); }
-:root:not([data-theme="dark"]) .host-card.selected { background: var(--accent-soft); border-color: var(--accent-line); }
 
 .theme-color-control { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
 .theme-color-preview { width: 16px; height: 16px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 4px var(--accent-soft); }
+.terminal-font-settings { display: flex; flex-direction: column; gap: 14px; }
+.terminal-font-fields { display: grid; grid-template-columns: minmax(0, 1fr) 110px; gap: 16px; }
+.terminal-font-preview { padding: 14px 16px; border: 1px solid var(--line); border-radius: 6px; background: var(--workspace); color: var(--ink); line-height: 1.6; overflow-wrap: anywhere; }
+.terminal-font-actions { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 9px; }
+.terminal-font-retry { padding: 0; color: var(--accent); text-decoration: underline; }
 @media (max-width: 560px) { .application-brand strong { display: none; } }

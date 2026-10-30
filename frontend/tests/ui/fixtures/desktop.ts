@@ -64,6 +64,7 @@ export async function desktopFixture(page: Page, largeDirectory = false, needsPa
         if (command === 'browser_layout') return;
         // Real IPC returns a serialized snapshot, never the fixture's mutable array.
         if (command === 'list_hosts') return structuredClone(hosts);
+        if (command === 'get_host_password') return hosts.find((host: any) => host.id === args.id)?.rememberPassword ? 'qa-saved-password' : '';
         if (command === 'save_host') {
           const previous = hosts.find((host: any) => host.id === args.host.id);
           const sameIdentity = previous && ['address', 'port', 'username'].every(key => previous[key] === args.host[key]);
@@ -123,6 +124,7 @@ export async function desktopFixture(page: Page, largeDirectory = false, needsPa
         if (command === 'resolve_file_path') return args.path === '.' ? '/remote' : args.path;
         if (command === 'list_files') return entries(args.path);
         if (command === 'get_preferences') return { ...preferences };
+        if (command === 'list_system_fonts') return ['Hannotate SC', 'Menlo', 'Monaco', 'PingFang SC', 'Courier New', 'Arial'];
         if (command === 'set_preference') { preferences[args.key] = args.value; localStorage.setItem('qa-preferences', JSON.stringify(preferences)); return; }
         if (slowServices && ['get_portable_info', 'get_homebrew_info', 'list_extensions'].includes(command)) {
           await servicesReady;

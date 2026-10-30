@@ -10,6 +10,7 @@ import {
 import type { InjectionKey } from "vue";
 import * as api from "../lib/api";
 import { appearanceRevision, restoreAppearance } from "./appearance";
+import { restoreTerminalFont, terminalFontRevision } from "./terminalFont";
 import type {
   AppError,
   HostConfig,
@@ -39,16 +40,17 @@ interface Attempt {
   cancelled: boolean;
   replacement?: string;
 }
+export const hostSettingsView = (hostId: string) => `host-settings:${hostId}`;
 export function createWorkspace() {
   // Hosts are backend snapshots; edits save a separate form and reload this list.
   const hosts = shallowRef<HostConfig[]>([]),
     sessions = ref<SessionView[]>([]),
     view = ref("hosts"),
     settingsOpened = ref(false),
+    hostSettings = shallowRef<HostConfig[]>([]),
     error = ref(""),
     loading = ref(false);
-  const editor = shallowRef<HostConfig | "new" | null>(null),
-    selectedHost = ref<string | null>(null),
+  const editor = shallowRef<"new" | null>(null),
     group = ref<string | null>(null),
     search = ref(""),
     paletteOpen = ref(false),
@@ -99,12 +101,32 @@ export function createWorkspace() {
   async function reloadHosts() {
     const request = ++hostsRequest;
     const next = await api.listHosts();
-    if (alive && request === hostsRequest) hosts.value = next;
+    if (alive && request === hostsRequest) {
+      hosts.value = next;
+      hostSettings.value = hostSettings.value.flatMap(h => {
+        const updated = next.find(item => item.id === h.id);
+        return updated ? [updated] : [];
+      });
+      if (view.value.startsWith("host-settings:") && !hostSettings.value.some(h => hostSettingsView(h.id) === view.value)) view.value = "hosts";
+    }
   }
   function fail(e: unknown) {
     if (alive) error.value = errorMessage(e);
   }
   let settingsReturnView = "hosts";
+  function openHostSettings(host: HostConfig) {
+    if (!hostSettings.value.some(h => h.id === host.id)) hostSettings.value = [...hostSettings.value, host];
+    view.value = hostSettingsView(host.id);
+  }
+  function closeHostSettings(hostId: string) {
+    const index = hostSettings.value.findIndex(h => h.id === hostId);
+    hostSettings.value = hostSettings.value.filter(h => h.id !== hostId);
+    if (view.value === hostSettingsView(hostId)) {
+      const neighbor = hostSettings.value[Math.max(0, index - 1)];
+      view.value = neighbor ? hostSettingsView(neighbor.id)
+        : sessions.value[sessions.value.length - 1]?.id || (settingsOpened.value ? "settings" : "hosts");
+    }
+  }
   function showSettings() {
     if (view.value !== "settings") settingsReturnView = view.value;
     settingsOpened.value = true;
@@ -113,7 +135,7 @@ export function createWorkspace() {
   function closeSettings() {
     settingsOpened.value = false;
     if (view.value === "settings") {
-      view.value = settingsReturnView === "hosts" || sessions.value.some(s => s.id === settingsReturnView)
+      view.value = settingsReturnView === "hosts" || sessions.value.some(s => s.id === settingsReturnView) || hostSettings.value.some(h => hostSettingsView(h.id) === settingsReturnView)
         ? settingsReturnView
         : sessions.value[sessions.value.length - 1]?.id || "hosts";
     }
@@ -326,7 +348,7 @@ export function createWorkspace() {
       const index = sessions.value.findIndex((v) => v.id === s.id);
       if (index >= 0) sessions.value.splice(index, 1);
       if (view.value === s.id)
-        view.value = sessions.value[Math.max(0, index - 1)]?.id || (settingsOpened.value ? "settings" : "hosts");
+        view.value = sessions.value[Math.max(0, index - 1)]?.id || (hostSettings.value.length ? hostSettingsView(hostSettings.value[hostSettings.value.length - 1]!.id) : settingsOpened.value ? "settings" : "hosts");
     } catch (e) {
       fail(e);
     } finally {
@@ -355,15 +377,14 @@ export function createWorkspace() {
     ) {
       await api.deleteHost(h.id);
       await reloadHosts();
-      if (selectedHost.value === h.id) selectedHost.value = null;
+      closeHostSettings(h.id);
     }
   }
   async function duplicate(h: HostConfig) {
     try {
       const next = await api.duplicateHost(h.id);
       await reloadHosts();
-      selectedHost.value = next.id;
-      editor.value = next;
+      openHostSettings(next);
     } catch (e) {
       fail(e);
     }
@@ -407,6 +428,7 @@ export function createWorkspace() {
       }),
     );
     const initialAppearanceRevision = appearanceRevision();
+    const initialFontRevision = terminalFontRevision();
     await Promise.allSettled([
       reloadHosts().catch(fail),
       api
@@ -419,6 +441,7 @@ export function createWorkspace() {
         .getPreferences()
         .then((p) => {
           if (alive) restoreAppearance(p, initialAppearanceRevision);
+          if (alive) restoreTerminalFont(p, initialFontRevision);
           if (alive && typeof p["terminal.highlightOutput"] === "boolean")
             highlight.value = p["terminal.highlightOutput"] as boolean;
         })
@@ -461,10 +484,10 @@ export function createWorkspace() {
     sessions,
     view,
     settingsOpened,
+    hostSettings,
     error,
     loading,
     editor,
-    selectedHost,
     group,
     search,
     paletteOpen,
@@ -485,6 +508,8 @@ export function createWorkspace() {
     fail,
     showSettings,
     closeSettings,
+    openHostSettings,
+    closeHostSettings,
     updateTransfer,
     onDirectoryChanged,
     connect,

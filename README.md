@@ -4,6 +4,8 @@
 
 当前版本 **0.1.0**，亮色采用飞书风格的蓝白配色与浅灰工作区：顶部应用菜单、全宽服务器卡片、分组筛选和右侧连接详情。macOS 使用系统原生菜单，Windows / Linux 和网页预览提供窗口内菜单。已在 macOS Apple Silicon 完成构建，Windows / Linux 桌面尚未验收。
 
+![服务器监控概览](docs/images/monitor-overview.png)
+
 ![服务器卡片工作区](docs/images/servers.png)
 
 ## 功能

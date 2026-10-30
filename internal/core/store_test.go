@@ -9,6 +9,41 @@ import (
 	"testing"
 )
 
+func TestGetHostPasswordReadsSavedCredentialsWithoutExposingThemInHostList(t *testing.T) {
+	e := newTestEngine(t, nil)
+	for _, method := range []string{"password", "privateKey", "agent"} {
+		t.Run(method, func(t *testing.T) {
+			h := Host{Name: method, Address: "example.test", Port: 22, Username: "user", AuthMethod: method}
+			if method == "privateKey" {
+				h.PrivateKeyPath = ptr("/tmp/test-key")
+			}
+			h = saveTestHost(t, e, h, ptr("saved-test-credential"))
+			value, err := e.Call("get_host_password", Arguments{ID: h.ID})
+			want := "saved-test-credential"
+			if method == "agent" {
+				want = ""
+			}
+			if err != nil || value != want {
+				t.Fatalf("credential retrieval failed for %s: %v", method, err)
+			}
+		})
+	}
+	h := saveTestHost(t, e, Host{Name: "unsaved", Address: "unsaved.test", Port: 22, Username: "user"}, nil)
+	if value, err := e.Call("get_host_password", Arguments{ID: h.ID}); err != nil || value != "" {
+		t.Fatalf("unsaved credential should be empty: %v", err)
+	}
+	_, err := e.Call("get_host_password", Arguments{ID: "missing"})
+	requireCode(t, err, "host_not_found")
+	hosts, err := e.Call("list_hosts", Arguments{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := json.Marshal(hosts)
+	if err != nil || bytes.Contains(raw, []byte("saved-test-credential")) {
+		t.Fatal("host listing leaked credentials", err)
+	}
+}
+
 func TestStoreEncryptsCredentialsAndPreservesTransactionalState(t *testing.T) {
 	dir := t.TempDir()
 	s, err := OpenStore(dir)

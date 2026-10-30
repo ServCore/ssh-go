@@ -21,6 +21,7 @@ import { TerminalOutputHighlighter } from "./outputHighlight";
 import type { TerminalEvent } from "../../lib/types";
 import BaseModal from "../../components/BaseModal.vue";
 import { isDark, accentColor } from "../../composables/appearance";
+import { terminalFont, terminalFontFamily } from "../../composables/terminalFont";
 const previewAnsi = computed(() => terminalAnsi[isDark.value ? "dark" : "light"]);
 const props = defineProps<{
   sessionId: string;
@@ -48,6 +49,7 @@ let term: Terminal | undefined,
   input = "",
   timer: ReturnType<typeof setTimeout> | undefined,
   resizeFrame = 0,
+  fontRequest = 0,
   command = "";
 let inputQueue = Promise.resolve();
 const disposeCallbacks: (() => void)[] = [];
@@ -118,8 +120,8 @@ onMounted(async () => {
   await nextTick();
   if (disposed || !container.value) return;
   term = new Terminal({
-    fontFamily: 'Menlo, Monaco, "SFMono-Regular", monospace',
-    fontSize: 13,
+    fontFamily: terminalFontFamily.value,
+    fontSize: terminalFont.value.size,
     lineHeight: 1.35,
     cursorBlink: false,
     scrollback: 3000,
@@ -238,6 +240,15 @@ watch([isDark, accentColor], ([dark]) => {
   // the terminal, PTY, selection and scrollback while refreshing its palette.
   if (term) term.options.theme = terminalTheme(dark);
   highlighter?.update({ enabled: props.highlight, dark, visible: props.visible });
+});
+watch(terminalFont, async (value) => {
+  const request = ++fontRequest;
+  const family = terminalFontFamily.value;
+  try { await document.fonts.load(`${value.size}px ${family}`); } catch { /* Use the font fallback stack. */ }
+  if (disposed || request !== fontRequest || !term) return;
+  term.options.fontFamily = family;
+  term.options.fontSize = value.size;
+  resize();
 });
 onBeforeUnmount(() => {
   disposed = true;

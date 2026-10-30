@@ -8,7 +8,7 @@ import {
   ref,
   watch,
 } from "vue";
-import { createWorkspace, workspaceKey } from "./composables/workspace";
+import { createWorkspace, hostSettingsView, workspaceKey } from "./composables/workspace";
 import AppIcon from "./components/AppIcon.vue";
 import AppLogo from "./components/AppLogo.vue";
 import ApplicationMenu from "./components/ApplicationMenu.vue";
@@ -17,10 +17,8 @@ import WorkspaceNavigation from "./components/WorkspaceNavigation.vue";
 import { desktopAvailable } from "./lib/api";
 import type { MenuAction } from "./lib/menu";
 import HostsPage from "./features/hosts/HostsPage.vue";
+import HostEditor from "./features/hosts/HostEditor.vue";
 import { formatBytes } from "./lib/format";
-const HostEditor = defineAsyncComponent(
-  () => import("./features/hosts/HostEditor.vue"),
-);
 const PasswordDialog = defineAsyncComponent(
   () => import("./features/hosts/PasswordDialog.vue"),
 );
@@ -52,6 +50,7 @@ const {
   sessions,
   view,
   settingsOpened,
+  hostSettings,
   error,
   editor,
   group,
@@ -100,8 +99,8 @@ const aggregate = computed(() => {
     ? Math.min(100, Math.floor((done / total) * 100)) + "%"
     : "准备中";
 });
-async function saved() {
-  editor.value = null;
+async function saved(_hostId: string, creating: boolean) {
+  if (creating) editor.value = null;
   try {
     await w.reloadHosts();
   } catch (e) {
@@ -117,8 +116,8 @@ function submitAuth(secret: string) {
 const nativeMenu = ref(false);
 let stopMenu: (() => void) | undefined;
 function menuAction(action: MenuAction) {
-  // Menu commands must not open another tool behind a modal or a details drawer.
-  if (document.querySelector('[role="dialog"]')) return;
+  // Non-modal editors leave the rest of the workspace available.
+  if (document.querySelector('[role="dialog"]:not([aria-modal="false"])')) return;
   switch (action) {
     case "new": if (desktopAvailable) editor.value = "new"; break;
     case "hosts": view.value = "hosts"; group.value = null; break;
@@ -127,6 +126,7 @@ function menuAction(action: MenuAction) {
     case "transfers": transfersOpen.value = true; break;
     case "close":
       if (view.value === "settings") w.closeSettings();
+      else if (view.value.startsWith("host-settings:")) w.closeHostSettings(view.value.slice("host-settings:".length));
       else if (w.active.value) void w.closeSession(w.active.value);
       break;
   }
@@ -169,7 +169,7 @@ onBeforeUnmount(() => {
           </button>
           <ApplicationMenu v-if="!nativeMenu" :can-close="view !== 'hosts'" @action="menuAction" />
         </div>
-        <SessionTabs v-if="sessions.length || settingsOpened" />
+        <SessionTabs v-if="sessions.length || settingsOpened || hostSettings.length" />
         <div class="topbar-actions">
           <button class="command-trigger" aria-label="搜索资源与操作" :title="`搜索资源与操作 (${w.shortcutModifier} K)`" @click="paletteOpen = true">
             <AppIcon name="search" :size="16" />
@@ -194,6 +194,12 @@ onBeforeUnmount(() => {
         <div v-show="view === 'hosts'" class="hosts-workspace">
           <HostsPage />
         </div>
+        <section v-for="host in hostSettings" :key="host.id" v-show="view === hostSettingsView(host.id)"
+          :id="`host-settings-panel-${host.id}`" class="host-settings-page" role="tabpanel"
+          :aria-labelledby="`host-settings-tab-${host.id}`">
+          <HostEditor :host="host" :hosts="hosts" :visible="view === hostSettingsView(host.id)"
+            :on-saved="saved" @close="w.closeHostSettings(host.id)" />
+        </section>
         <section
           v-for="s in sessions"
           v-show="view === s.id"
@@ -312,11 +318,10 @@ onBeforeUnmount(() => {
       </footer>
     </div>
     <HostEditor
-      v-if="editor"
-      :host="editor === 'new' ? undefined : editor"
+      v-if="editor === 'new'"
       :hosts="hosts"
       @close="editor = null"
-      @saved="saved"
+      :on-saved="saved"
     />
     <PasswordDialog
       v-if="authPrompt"

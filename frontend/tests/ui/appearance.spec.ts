@@ -1,3 +1,4 @@
+import { openHostSettings } from "./fixtures/navigation";
 import { expect, test, type Locator } from "@playwright/test";
 import { desktopFixture } from "./fixtures/desktop";
 
@@ -43,7 +44,7 @@ test("system mode follows live OS changes while an explicit choice stays fixed",
   await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
 });
 
-test("dark surfaces cover menus, cards, drawers, forms, terminal and SFTP", async ({ page }) => {
+test("dark surfaces cover menus, cards, settings tabs, forms, terminal and SFTP", async ({ page }) => {
   await desktopFixture(page, false, false, true);
   await page.addInitScript(() => {
     localStorage.setItem("qa-preferences", JSON.stringify({ "appearance.mode": "dark" }));
@@ -61,10 +62,10 @@ test("dark surfaces cover menus, cards, drawers, forms, terminal and SFTP", asyn
   await page.getByRole("menuitem", { name: "查看", exact: true }).click();
   await darkSurface(page.getByRole("menu", { name: "查看", exact: true }));
   await page.keyboard.press("Escape");
-  await page.getByRole("button", { name: "查看详情 生产 API", exact: true }).click();
-  await darkSurface(page.locator(".arco-drawer"));
-  await page.screenshot({ path: ".test-artifacts/appearance-details-dark.png", animations: "disabled" });
-  await page.keyboard.press("Escape");
+  await openHostSettings(page.getByRole("group", { name: "服务器 生产 API", exact: true }));
+  await darkSurface(page.locator(".host-settings-page"));
+  await page.screenshot({ path: ".test-artifacts/appearance-host-settings-dark.png", animations: "disabled" });
+  await page.getByRole("button", { name: "关闭 生产 API · 连接设置", exact: true }).click();
   await page.getByRole("button", { name: "添加服务器", exact: true }).click();
   await expect(page.locator(".arco-modal")).toHaveCSS("opacity", "1");
   await darkSurface(page.locator(".arco-modal"));

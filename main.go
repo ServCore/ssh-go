@@ -8,6 +8,7 @@ import (
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/options"
 	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
+	"github.com/wailsapp/wails/v2/pkg/options/mac"
 	"ssh-go/internal/core"
 )
 
@@ -19,6 +20,8 @@ func main() {
 	err := wails.Run(&options.App{
 		Title: "ssh-go", Menu: app.applicationMenu(),
 		Width: 1080, Height: 700, MinWidth: 800, MinHeight: 560,
+		// Wails 2.12 disables the native zoom button when Mac options are nil.
+		Mac:              &mac.Options{TitleBar: mac.TitleBarDefault(), DisableZoom: false},
 		AssetServer:      &assetserver.Options{Assets: assets},
 		BackgroundColour: options.NewRGB(255, 255, 255),
 		OnStartup:        app.startup, OnShutdown: app.shutdown,
