@@ -35,6 +35,8 @@ declare global {
 }
 
 export const desktopAvailable = Boolean(window.go?.main?.App && window.runtime);
+export const setWindowAppearance = (mode: "light" | "dark" | "system") =>
+  call<void>("set_window_appearance", { mode });
 function listen<T>(
   name: string,
   callback: (event: { payload: T }) => void,

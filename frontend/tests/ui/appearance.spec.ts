@@ -8,20 +8,29 @@ async function darkSurface(locator: Locator) {
   expect(channels[2]).toBeGreaterThanOrEqual(channels[1]!);
 }
 
+async function windowAppearance(page: import("@playwright/test").Page, mode: string) {
+  await expect.poll(() => page.evaluate(() => (window as any).__qa.calls
+    .filter((call: any) => call.command === "set_window_appearance").at(-1)?.args.mode)).toBe(mode);
+}
+
 test("appearance choices persist through desktop preferences and page reload", async ({ page }) => {
   await desktopFixture(page);
   await page.goto("/");
+  await windowAppearance(page, "light");
   await page.keyboard.press("Meta+,");
   await page.getByLabel("外观模式", { exact: true }).selectOption("dark");
   await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+  await windowAppearance(page, "dark");
   await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem("qa-preferences") || "{}")["appearance.mode"])).toBe("dark");
   await page.reload();
   await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+  await windowAppearance(page, "dark");
   await expect(page.locator("body")).toHaveAttribute("arco-theme", "dark");
   await page.keyboard.press("Meta+,");
   await expect(page.getByLabel("外观模式", { exact: true })).toHaveValue("dark");
   await page.getByLabel("外观模式", { exact: true }).selectOption("light");
   await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
+  await windowAppearance(page, "light");
   await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem("qa-preferences") || "{}")["appearance.mode"])).toBe("light");
   await page.reload();
   await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
@@ -33,15 +42,18 @@ test("system mode follows live OS changes while an explicit choice stays fixed",
   await page.goto("/");
   await page.keyboard.press("Meta+,");
   await page.getByLabel("外观模式", { exact: true }).selectOption("system");
+  await windowAppearance(page, "system");
   await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
   await page.emulateMedia({ colorScheme: "dark" });
   await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+  await windowAppearance(page, "system");
   await page.emulateMedia({ colorScheme: "light" });
   await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
   await page.getByLabel("外观模式", { exact: true }).selectOption("dark");
   await page.emulateMedia({ colorScheme: "dark" });
   await page.emulateMedia({ colorScheme: "light" });
   await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+  await windowAppearance(page, "dark");
 });
 
 test("dark surfaces cover menus, cards, settings tabs, forms, terminal and SFTP", async ({ page }) => {

@@ -46,6 +46,14 @@ func (a *App) Call(command string, args map[string]any) (any, error) {
 	if a.initErr != nil {
 		return nil, a.initErr
 	}
+	if command == "set_window_appearance" {
+		mode, _ := args["mode"].(string)
+		if mode != "light" && mode != "dark" && mode != "system" {
+			return nil, &core.AppError{Code: "invalid_arguments", Message: "窗口外观模式无效"}
+		}
+		setWindowAppearance(a.ctx, mode)
+		return nil, nil
+	}
 	if strings.HasPrefix(command, "dialog_") {
 		return a.dialog(command, args)
 	}

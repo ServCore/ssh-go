@@ -14,6 +14,8 @@ export const accentColor = readonly(accent);
 export const isDark = computed(() => mode.value === "dark" || (mode.value === "system" && systemDark.value));
 let modeRevision = 0, accentRevision = 0;
 let saveQueue = Promise.resolve();
+let windowMode: AppearanceMode | undefined;
+let windowQueue = Promise.resolve();
 function valid(value: unknown): value is AppearanceMode {
   return value === "light" || value === "dark" || value === "system";
 }
@@ -23,6 +25,15 @@ function apply() {
   document.documentElement.style.colorScheme = theme;
   document.body.setAttribute("arco-theme", theme);
   applyAccent(accent.value, isDark.value);
+  if (api.desktopAvailable && windowMode !== mode.value) {
+    const next = mode.value;
+    windowMode = next;
+    // Preserve selection order while the desktop is starting up.
+    windowQueue = windowQueue.then(() => api.setWindowAppearance(next)).catch((error) => {
+      windowMode = undefined;
+      console.warn("无法同步原生窗口外观", error);
+    });
+  }
 }
 function cache() {
   try {
